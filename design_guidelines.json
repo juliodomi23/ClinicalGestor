@@ -1,0 +1,153 @@
+{
+  "identity": {
+    "name": "Clinica",
+    "tone": "Clinical Precision meets Human Empathy",
+    "keywords": ["Sterile", "Trustworthy", "Efficient", "Modern", "Calm"],
+    "audience": ["Dentists", "Clinic Admins", "Receptionists"],
+    "visual_metaphor": "Ceramic & Light"
+  },
+  "typography": {
+    "font_family": {
+      "headings": "Plus Jakarta Sans, sans-serif",
+      "body": "Inter, sans-serif",
+      "mono": "JetBrains Mono, monospace"
+    },
+    "scale": {
+      "h1": "text-4xl md:text-5xl font-bold tracking-tight",
+      "h2": "text-3xl md:text-4xl font-semibold tracking-tight",
+      "h3": "text-2xl font-semibold tracking-tight",
+      "h4": "text-xl font-medium",
+      "body_lg": "text-lg leading-relaxed",
+      "body": "text-base leading-relaxed text-slate-600 dark:text-slate-400",
+      "small": "text-sm font-medium text-slate-500",
+      "tiny": "text-xs font-semibold uppercase tracking-wider text-slate-400"
+    }
+  },
+  "colors": {
+    "theme_strategy": "Medical Trust",
+    "light_mode": {
+      "background": "210 40% 98%",
+      "foreground": "222 47% 11%",
+      "card": "0 0% 100%",
+      "card_foreground": "222 47% 11%",
+      "popover": "0 0% 100%",
+      "popover_foreground": "222 47% 11%",
+      "primary": "199 89% 48%",
+      "primary_foreground": "210 40% 98%",
+      "secondary": "168 83% 43%",
+      "secondary_foreground": "210 40% 98%",
+      "muted": "210 40% 96.1%",
+      "muted_foreground": "215.4 16.3% 46.9%",
+      "accent": "199 89% 96%",
+      "accent_foreground": "222 47% 11%",
+      "destructive": "0 84.2% 60.2%",
+      "destructive_foreground": "210 40% 98%",
+      "border": "214.3 31.8% 91.4%",
+      "input": "214.3 31.8% 91.4%",
+      "ring": "199 89% 48%"
+    },
+    "dark_mode": {
+      "background": "222 47% 11%",
+      "foreground": "210 40% 98%",
+      "card": "217 33% 17%",
+      "card_foreground": "210 40% 98%",
+      "popover": "222 47% 11%",
+      "popover_foreground": "210 40% 98%",
+      "primary": "199 89% 48%",
+      "primary_foreground": "222 47% 11%",
+      "secondary": "168 83% 43%",
+      "secondary_foreground": "210 40% 98%",
+      "muted": "217 33% 17%",
+      "muted_foreground": "215 20.2% 65.1%",
+      "accent": "217 33% 17%",
+      "accent_foreground": "210 40% 98%",
+      "destructive": "0 62.8% 30.6%",
+      "destructive_foreground": "210 40% 98%",
+      "border": "217 33% 17%",
+      "input": "217 33% 17%",
+      "ring": "199 89% 48%"
+    },
+    "semantic": {
+      "success": "text-emerald-600 bg-emerald-50 border-emerald-200",
+      "warning": "text-amber-600 bg-amber-50 border-amber-200",
+      "error": "text-rose-600 bg-rose-50 border-rose-200",
+      "info": "text-sky-600 bg-sky-50 border-sky-200"
+    }
+  },
+  "layout_strategy": {
+    "dashboard": "Bento Grid System",
+    "grid_config": "grid grid-cols-1 md:grid-cols-12 gap-6 p-6",
+    "sidebar": "Fixed, collapsible, w-64 md:w-20 lg:w-64 transition-all duration-300 border-r bg-card",
+    "containers": "max-w-7xl mx-auto",
+    "z_index": {
+      "modal": "z-50",
+      "dropdown": "z-40",
+      "sticky_nav": "z-30",
+      "base": "z-0"
+    }
+  },
+  "components": {
+    "cards": {
+      "style": "bg-card border border-border/50 shadow-sm hover:shadow-md transition-shadow duration-200 rounded-xl",
+      "padding": "p-6"
+    },
+    "buttons": {
+      "primary": "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm rounded-lg px-4 py-2 font-medium transition-all active:scale-95",
+      "secondary": "bg-secondary text-secondary-foreground hover:bg-secondary/90 shadow-sm rounded-lg px-4 py-2 font-medium",
+      "outline": "border-2 border-input bg-transparent hover:bg-accent hover:text-accent-foreground rounded-lg px-4 py-2 font-medium",
+      "ghost": "hover:bg-accent hover:text-accent-foreground rounded-lg px-4 py-2 font-medium"
+    },
+    "inputs": {
+      "style": "flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+    }
+  },
+  "special_modules": {
+    "odontogram": {
+      "description": "Interactive 32-tooth dental chart",
+      "implementation": "SVG-based component. Each tooth is an isolated SVG with 5 interactive zones (Occlusal, Mesial, Distal, Buccal, Lingual).",
+      "states": ["Healthy", "Caries", "Restored", "Extracted", "Crown", "Root Canal"],
+      "color_map": {
+        "Healthy": "fill-white",
+        "Caries": "fill-rose-400",
+        "Restored": "fill-blue-400",
+        "Extracted": "opacity-20",
+        "Crown": "fill-amber-300",
+        "Root Canal": "fill-purple-400"
+      }
+    },
+    "calendar": {
+      "view_types": ["Day", "Week", "Month"],
+      "event_style": "rounded-md px-2 py-1 text-xs font-semibold truncate border-l-4",
+      "doctor_colors": ["border-blue-500 bg-blue-100 text-blue-700", "border-emerald-500 bg-emerald-100 text-emerald-700", "border-purple-500 bg-purple-100 text-purple-700"]
+    }
+  },
+  "assets": {
+    "icons": "Lucide React (imported as `import { IconName } from 'lucide-react'`)",
+    "image_urls": {
+      "login_bg": "https://images.unsplash.com/photo-1629909613654-28e377c37b09?auto=format&fit=crop&q=80&w=2000",
+      "doctor_avatar_1": "https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&q=80&w=200",
+      "doctor_avatar_2": "https://images.unsplash.com/photo-1594824476967-48c8b964273f?auto=format&fit=crop&q=80&w=200",
+      "patient_avatar_1": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200",
+      "patient_avatar_2": "https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&q=80&w=200",
+      "clinic_logo_placeholder": "https://placehold.co/100x100/0ea5e9/ffffff?text=Clinica"
+    }
+  },
+  "instructions_to_main_agent": [
+    "INSTALL_DEPENDENCIES: `npm install lucide-react date-fns recharts react-day-picker`",
+    "THEME_SETUP: Overwrite `src/index.css` with the CSS variables provided in `colors.light_mode` and `colors.dark_mode`. Ensure `.dark` class is handled.",
+    "ROUTING: Use `react-router-dom`. Create routes: `/login`, `/admin/dashboard`, `/doctor/dashboard`, `/patients/:id`, `/calendar`, `/settings`.",
+    "LAYOUT: Create a `Layout` component with a Sidebar and Topbar. Use it to wrap authenticated routes.",
+    "ODONTOGRAM: Create a `components/Odontogram.js` file. It should accept a `patientId` and `teethData` prop. If data is missing, initialize empty state for 32 teeth.",
+    "MOCK_DATA: Create a `utils/mockData.js` file to simulate backend data for Patients, Appointments, and Doctors. Do not fetch from empty APIs.",
+    "LANGUAGE: All visible text MUST be in SPANISH.",
+    "ACCESSIBILITY: Ensure all inputs have labels or aria-labels. Contrast ratios must be high (Medical grade)."
+  ],
+  "universal_guidelines": [
+    "Do not use gradients for main backgrounds. Use solid, clean colors.",
+    "Shadows should be subtle (`shadow-sm`) to maintain a clean look.",
+    "Use generous padding (`p-6` or `p-8`) inside cards.",
+    "Border radius should be consistent (`rounded-xl` for cards, `rounded-lg` for buttons).",
+    "Interactive elements must have a hover state.",
+    "Toast notifications (Sonner) should be used for all success/error actions."
+  ]
+}
