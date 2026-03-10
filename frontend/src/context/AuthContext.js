@@ -14,8 +14,8 @@ export const useAuth = () => {
 };
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [user, setUser]     = useState(null);
+  const [token, setToken]   = useState(localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -25,6 +25,7 @@ export const AuthProvider = ({ children }) => {
     } else {
       setLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   const fetchUser = async () => {
@@ -49,16 +50,6 @@ export const AuthProvider = ({ children }) => {
     return userData;
   };
 
-  const register = async (email, password, nombre, rol = 'doctor') => {
-    const response = await axios.post(`${API}/auth/register`, { email, password, nombre, rol });
-    const { access_token, user: userData } = response.data;
-    localStorage.setItem('token', access_token);
-    axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
-    setToken(access_token);
-    setUser(userData);
-    return userData;
-  };
-
   const logout = () => {
     localStorage.removeItem('token');
     delete axios.defaults.headers.common['Authorization'];
@@ -71,7 +62,6 @@ export const AuthProvider = ({ children }) => {
     token,
     loading,
     login,
-    register,
     logout,
     isAuthenticated: !!user,
   };

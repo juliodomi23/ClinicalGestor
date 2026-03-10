@@ -1,16 +1,233 @@
+import { useState, useEffect, useCallback } from 'react';
+import axios from 'axios';
 import { Layout } from '../components/Layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { Switch } from '../components/ui/switch';
+import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
+import { Switch } from '../components/ui/switch';
 import { Separator } from '../components/ui/separator';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
-import { Moon, Sun, User, Bell, Shield, Database } from 'lucide-react';
+import { toast } from 'sonner';
+import {
+  Moon, Sun, User, Bell, Shield, Database,
+  Users, UserPlus, Trash2, Eye, EyeOff, RefreshCw
+} from 'lucide-react';
 
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
+const ROL_LABELS = {
+  admin:     'Administrador',
+  doctor:    'Doctor',
+  recepcion: 'Recepción',
+};
+
+// ── Sección de gestión de usuarios (solo admin) ────────────────────────────
+const UsersSection = ({ currentUser }) => {
+  const [users, setUsers]           = useState([]);
+  const [loadingUsers, setLoading]  = useState(false);
+  const [showForm, setShowForm]     = useState(false);
+  const [showPass, setShowPass]     = useState(false);
+  const [saving, setSaving]         = useState(false);
+  const [form, setForm] = useState({
+    nombre: '', email: '', password: '', rol: 'recepcion',
+  });
+
+  const loadUsers = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await axios.get(`${API}/admin/usuarios`);
+      setUsers(res.data);
+    } catch {
+      toast.error('No se pudo cargar la lista de usuarios');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadUsers(); }, [loadUsers]);
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await axios.post(`${API}/admin/usuarios`, form);
+      toast.success(`Usuario ${form.email} creado`);
+      setForm({ nombre: '', email: '', password: '', rol: 'recepcion' });
+      setShowForm(false);
+      loadUsers();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al crear usuario');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (uid, nombre) => {
+    if (!window.confirm(`¿Eliminar el usuario "${nombre}"?`)) return;
+    try {
+      await axios.delete(`${API}/admin/usuarios/${uid}`);
+      toast.success('Usuario eliminado');
+      loadUsers();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al eliminar usuario');
+    }
+  };
+
+  return (
+    <Card className="bg-card border-border/50">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Users className="h-5 w-5" />
+          Usuarios del sistema
+        </CardTitle>
+        <CardDescription>
+          Crea y administra las cuentas del personal de la clínica
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Acciones */}
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            onClick={() => setShowForm(!showForm)}
+            className="gap-2"
+          >
+            <UserPlus className="h-4 w-4" />
+            {showForm ? 'Cancelar' : 'Nuevo usuario'}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={loadUsers}
+            disabled={loadingUsers}
+            className="gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${loadingUsers ? 'animate-spin' : ''}`} />
+            Actualizar
+          </Button>
+        </div>
+
+        {/* Formulario de creación */}
+        {showForm && (
+          <form onSubmit={handleCreate} className="space-y-3 p-4 rounded-lg bg-muted/40 border border-border/50">
+            <h3 className="text-sm font-semibold">Nuevo usuario</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="u-nombre">Nombre completo</Label>
+                <Input
+                  id="u-nombre"
+                  placeholder="Dra. María López"
+                  value={form.nombre}
+                  onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="u-email">Correo electrónico</Label>
+                <Input
+                  id="u-email"
+                  type="email"
+                  placeholder="correo@clinica.com"
+                  value={form.email}
+                  onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="u-password">Contraseña</Label>
+                <div className="relative">
+                  <Input
+                    id="u-password"
+                    type={showPass ? 'text' : 'password'}
+                    placeholder="Mínimo 8 car., 1 mayúsc., 1 número"
+                    value={form.password}
+                    onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                    required
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0 h-full px-3 text-muted-foreground"
+                    onClick={() => setShowPass(!showPass)}
+                    tabIndex={-1}
+                  >
+                    {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="u-rol">Rol</Label>
+                <Select value={form.rol} onValueChange={v => setForm(f => ({ ...f, rol: v }))}>
+                  <SelectTrigger id="u-rol">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="admin">Administrador</SelectItem>
+                    <SelectItem value="doctor">Doctor</SelectItem>
+                    <SelectItem value="recepcion">Recepción</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button type="submit" size="sm" disabled={saving}>
+                {saving ? 'Guardando...' : 'Crear usuario'}
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setShowForm(false)}>
+                Cancelar
+              </Button>
+            </div>
+          </form>
+        )}
+
+        {/* Lista de usuarios */}
+        {loadingUsers ? (
+          <p className="text-sm text-muted-foreground">Cargando usuarios…</p>
+        ) : users.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No hay usuarios registrados.</p>
+        ) : (
+          <div className="divide-y divide-border/50">
+            {users.map(u => (
+              <div key={u.id} className="flex items-center justify-between py-3">
+                <div>
+                  <p className="font-medium text-sm">{u.nombre}</p>
+                  <p className="text-xs text-muted-foreground">{u.email}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs bg-muted px-2 py-0.5 rounded-full">
+                    {ROL_LABELS[u.rol] || u.rol}
+                  </span>
+                  {u.id !== currentUser?.id && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 text-destructive hover:text-destructive"
+                      onClick={() => handleDelete(u.id, u.nombre)}
+                      title="Eliminar usuario"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
+// ── Página principal ───────────────────────────────────────────────────────
 export const SettingsPage = () => {
   const { theme, toggleTheme } = useTheme();
   const { user } = useAuth();
+
+  const isAdmin = user?.rol === 'admin';
 
   return (
     <Layout>
@@ -22,16 +239,14 @@ export const SettingsPage = () => {
           </p>
         </div>
 
-        {/* Appearance */}
+        {/* ── Apariencia ─────────────────────────────────────────────────── */}
         <Card className="bg-card border-border/50">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Sun className="h-5 w-5" />
               Apariencia
             </CardTitle>
-            <CardDescription>
-              Configura el tema visual de la aplicación
-            </CardDescription>
+            <CardDescription>Configura el tema visual de la aplicación</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
@@ -48,10 +263,9 @@ export const SettingsPage = () => {
                 data-testid="theme-switch"
               />
             </div>
-            
-            {/* Theme Preview */}
+
             <div className="grid grid-cols-2 gap-4 mt-4">
-              <div 
+              <div
                 className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
                   theme === 'light' ? 'border-primary bg-white' : 'border-transparent bg-slate-100'
                 }`}
@@ -66,8 +280,8 @@ export const SettingsPage = () => {
                   <div className="h-2 w-3/4 bg-slate-200 rounded" />
                 </div>
               </div>
-              
-              <div 
+
+              <div
                 className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
                   theme === 'dark' ? 'border-primary bg-slate-900' : 'border-transparent bg-slate-800'
                 }`}
@@ -86,36 +300,37 @@ export const SettingsPage = () => {
           </CardContent>
         </Card>
 
-        {/* Account */}
+        {/* ── Cuenta ─────────────────────────────────────────────────────── */}
         <Card className="bg-card border-border/50">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <User className="h-5 w-5" />
-              Cuenta
+              Mi cuenta
             </CardTitle>
-            <CardDescription>
-              Información de tu cuenta
-            </CardDescription>
+            <CardDescription>Información de tu cuenta de acceso</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label className="text-muted-foreground text-xs">Nombre</Label>
-                <p className="font-medium">{user?.nombre || 'Usuario'}</p>
+                <p className="font-medium">{user?.nombre || '—'}</p>
               </div>
               <div>
                 <Label className="text-muted-foreground text-xs">Rol</Label>
-                <p className="font-medium capitalize">{user?.rol || 'Doctor'}</p>
+                <p className="font-medium">{ROL_LABELS[user?.rol] || user?.rol || '—'}</p>
               </div>
               <div className="col-span-2">
-                <Label className="text-muted-foreground text-xs">Email</Label>
-                <p className="font-medium">{user?.email || 'usuario@clinica.com'}</p>
+                <Label className="text-muted-foreground text-xs">Correo electrónico</Label>
+                <p className="font-medium">{user?.email || '—'}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Notifications - Coming Soon */}
+        {/* ── Gestión de usuarios (solo admin) ───────────────────────────── */}
+        {isAdmin && <UsersSection currentUser={user} />}
+
+        {/* ── Notificaciones (próximamente) ──────────────────────────────── */}
         <Card className="bg-card border-border/50 opacity-60">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -123,9 +338,7 @@ export const SettingsPage = () => {
               Notificaciones
               <span className="text-xs bg-muted px-2 py-0.5 rounded">Próximamente</span>
             </CardTitle>
-            <CardDescription>
-              Configura las notificaciones de la aplicación
-            </CardDescription>
+            <CardDescription>Configura las notificaciones de la aplicación</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
@@ -150,7 +363,7 @@ export const SettingsPage = () => {
           </CardContent>
         </Card>
 
-        {/* Integrations - Coming Soon */}
+        {/* ── Integraciones (próximamente) ───────────────────────────────── */}
         <Card className="bg-card border-border/50 opacity-60">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -158,11 +371,9 @@ export const SettingsPage = () => {
               Integraciones
               <span className="text-xs bg-muted px-2 py-0.5 rounded">Próximamente</span>
             </CardTitle>
-            <CardDescription>
-              Conecta servicios externos
-            </CardDescription>
+            <CardDescription>Conecta servicios externos</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent>
             <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center">
@@ -180,14 +391,12 @@ export const SettingsPage = () => {
                   <p className="text-sm text-muted-foreground">Para almacenar radiografías</p>
                 </div>
               </div>
-              <Button variant="outline" size="sm" disabled>
-                Conectar
-              </Button>
+              <Button variant="outline" size="sm" disabled>Conectar</Button>
             </div>
           </CardContent>
         </Card>
 
-        {/* Security - Coming Soon */}
+        {/* ── Seguridad (próximamente) ───────────────────────────────────── */}
         <Card className="bg-card border-border/50 opacity-60">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -195,14 +404,10 @@ export const SettingsPage = () => {
               Seguridad
               <span className="text-xs bg-muted px-2 py-0.5 rounded">Próximamente</span>
             </CardTitle>
-            <CardDescription>
-              Configura la seguridad de tu cuenta
-            </CardDescription>
+            <CardDescription>Configura la seguridad de tu cuenta</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button variant="outline" disabled>
-              Cambiar Contraseña
-            </Button>
+            <Button variant="outline" disabled>Cambiar contraseña</Button>
           </CardContent>
         </Card>
       </div>
