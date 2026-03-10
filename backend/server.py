@@ -50,9 +50,10 @@ CLINIC_ADDRESS       = os.environ.get('CLINIC_ADDRESS',       '')
 CLINIC_TIMEZONE      = os.environ.get('CLINIC_TIMEZONE',      'America/Mexico_City')
 
 # ── Horario laboral configurable ─────────────────────────────────────────────
-WORK_START    = int(os.environ.get('WORK_START',    '8'))   # hora inicio (0-23)
-WORK_END      = int(os.environ.get('WORK_END',      '19'))  # hora fin exclusivo
-SLOT_DURATION = int(os.environ.get('SLOT_DURATION', '30'))  # minutos por slot
+WORK_START       = int(os.environ.get('WORK_START',       '8'))    # hora inicio (0-23)
+WORK_END         = int(os.environ.get('WORK_END',         '19'))   # hora fin exclusivo
+SLOT_DURATION    = int(os.environ.get('SLOT_DURATION',    '30'))   # minutos por slot
+APPOINTMENT_PRICE = float(os.environ.get('APPOINTMENT_PRICE', '150.0'))  # precio base por cita
 
 # ============ MONGODB ============
 
@@ -839,7 +840,7 @@ async def get_dashboard_kpis(current_user: dict = Depends(get_current_user)):
     )
     return KPIResponse(
         pacientes_hoy=pacientes_hoy,
-        ingresos_mes=citas_completadas * 150.0,
+        ingresos_mes=citas_completadas * APPOINTMENT_PRICE,
         citas_completadas=citas_completadas,
         citas_canceladas=citas_canceladas,
         nuevos_pacientes=nuevos_pacientes
