@@ -24,6 +24,22 @@ const ROL_LABELS = {
   recepcion: 'Recepción',
 };
 
+const SPECIALTIES = [
+  'Odontología General', 'Endodoncia', 'Ortodoncia',
+  'Cirugía Maxilofacial', 'Periodoncia', 'Odontopediatría',
+  'Prostodoncia', 'Implantología',
+];
+
+const DOCTOR_COLORS = [
+  { value: '#0ea5e9', label: 'Azul' },
+  { value: '#10b981', label: 'Verde' },
+  { value: '#8b5cf6', label: 'Morado' },
+  { value: '#f59e0b', label: 'Naranja' },
+  { value: '#ef4444', label: 'Rojo' },
+  { value: '#ec4899', label: 'Rosa' },
+  { value: '#06b6d4', label: 'Cyan' },
+];
+
 // ── Sección de gestión de usuarios (solo admin) ────────────────────────────
 const UsersSection = ({ currentUser }) => {
   const [users, setUsers]           = useState([]);
@@ -33,6 +49,7 @@ const UsersSection = ({ currentUser }) => {
   const [saving, setSaving]         = useState(false);
   const [form, setForm] = useState({
     nombre: '', email: '', password: '', rol: 'recepcion',
+    especialidad: '', telefono: '', color: '#0ea5e9',
   });
 
   const loadUsers = useCallback(async () => {
@@ -53,13 +70,36 @@ const UsersSection = ({ currentUser }) => {
     e.preventDefault();
     setSaving(true);
     try {
-      await axios.post(`${API}/admin/usuarios`, form);
+      await axios.post(`${API}/admin/usuarios`, {
+        nombre: form.nombre,
+        email: form.email,
+        password: form.password,
+        rol: form.rol,
+      });
+
+      // Auto-create doctor profile when role is doctor
+      if (form.rol === 'doctor') {
+        try {
+          await axios.post(`${API}/doctors`, {
+            nombre: form.nombre,
+            email: form.email,
+            especialidad: form.especialidad || 'Odontología General',
+            telefono: form.telefono || '',
+            color: form.color || '#0ea5e9',
+            activo: true,
+          });
+        } catch {
+          toast.warning('Usuario creado, pero no se pudo crear el perfil de doctor. Edítalo desde Gestión de Doctores.');
+        }
+      }
+
       toast.success(`Usuario ${form.email} creado`);
-      setForm({ nombre: '', email: '', password: '', rol: 'recepcion' });
+      setForm({ nombre: '', email: '', password: '', rol: 'recepcion', especialidad: '', telefono: '', color: '#0ea5e9' });
       setShowForm(false);
       loadUsers();
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al crear usuario');
+      const d = err.response?.data?.detail;
+      toast.error(Array.isArray(d) ? d.map(e => e.msg).join(', ') : (d || 'Error al crear usuario'));
     } finally {
       setSaving(false);
     }
@@ -173,6 +213,53 @@ const UsersSection = ({ currentUser }) => {
                 </Select>
               </div>
             </div>
+
+            {/* Extra fields for doctor role */}
+            {form.rol === 'doctor' && (
+              <div className="space-y-3 p-3 rounded-lg bg-muted/60 border border-border/40">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Perfil de doctor</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="u-especialidad">Especialidad</Label>
+                    <Select value={form.especialidad} onValueChange={v => setForm(f => ({ ...f, especialidad: v }))}>
+                      <SelectTrigger id="u-especialidad">
+                        <SelectValue placeholder="Seleccionar..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SPECIALTIES.map(s => (
+                          <SelectItem key={s} value={s}>{s}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="u-telefono">Teléfono</Label>
+                    <Input
+                      id="u-telefono"
+                      placeholder="+52 555 123 4567"
+                      value={form.telefono}
+                      onChange={e => setForm(f => ({ ...f, telefono: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label>Color en calendario</Label>
+                  <div className="flex gap-2">
+                    {DOCTOR_COLORS.map(c => (
+                      <button
+                        key={c.value}
+                        type="button"
+                        className={`w-7 h-7 rounded-full border-2 transition-all ${form.color === c.value ? 'border-foreground scale-110' : 'border-transparent'}`}
+                        style={{ backgroundColor: c.value }}
+                        onClick={() => setForm(f => ({ ...f, color: c.value }))}
+                        title={c.label}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="flex gap-2 pt-1">
               <Button type="submit" size="sm" disabled={saving}>
                 {saving ? 'Guardando...' : 'Crear usuario'}

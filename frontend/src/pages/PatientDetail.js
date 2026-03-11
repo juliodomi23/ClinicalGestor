@@ -100,7 +100,8 @@ export const PatientDetail = () => {
       setNotes([res.data, ...notes]);
       toast.success('Nota clínica agregada');
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al agregar nota');
+      const d = err.response?.data?.detail;
+      toast.error(Array.isArray(d) ? d.map(e => e.msg).join(', ') : (d || 'Error al agregar nota'));
     }
   };
 

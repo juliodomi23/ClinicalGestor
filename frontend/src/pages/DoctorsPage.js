@@ -8,12 +8,11 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Switch } from '../components/ui/switch';
 import { toast } from 'sonner';
 import {
-  Plus,
   Search,
   Pencil,
   Trash2,
@@ -135,7 +134,8 @@ export const DoctorsPage = () => {
       }
       await fetchDoctors();
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al guardar doctor');
+      const d = err.response?.data?.detail;
+      toast.error(Array.isArray(d) ? d.map(e => e.msg).join(', ') : (d || 'Error al guardar doctor'));
       return;
     }
 
@@ -187,18 +187,13 @@ export const DoctorsPage = () => {
               Administra el equipo médico de Dentu
             </p>
           </div>
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button onClick={() => handleOpenDialog()} data-testid="add-doctor-btn">
-                <Plus className="h-4 w-4 mr-2" />
-                Agregar Doctor
-              </Button>
-            </DialogTrigger>
+        </div>
+
+        {/* Edit Doctor Dialog */}
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
-                <DialogTitle>
-                  {editingDoctor ? 'Editar Doctor' : 'Nuevo Doctor'}
-                </DialogTitle>
+                <DialogTitle>Editar Doctor</DialogTitle>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4 mt-4">
                 <div className="space-y-2">
@@ -291,8 +286,7 @@ export const DoctorsPage = () => {
                 </div>
               </form>
             </DialogContent>
-          </Dialog>
-        </div>
+        </Dialog>
 
         {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

@@ -180,7 +180,8 @@ export const CalendarPage = () => {
       setAppointments(prev => [...prev, res.data]);
       toast.success(`Cita creada: ${newApt.hora_inicio} - ${hora_fin}`);
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al crear cita');
+      const d = err.response?.data?.detail;
+      toast.error(Array.isArray(d) ? d.map(e => e.msg).join(', ') : (d || 'Error al crear cita'));
       return;
     }
 

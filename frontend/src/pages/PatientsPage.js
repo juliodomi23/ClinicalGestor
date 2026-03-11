@@ -115,17 +115,28 @@ export const PatientsPage = () => {
       return;
     }
 
+    // Pydantic's EmailStr rejects empty strings — send null instead
+    const payload = {
+      ...formData,
+      email: formData.email || null,
+      direccion: formData.direccion || null,
+    };
+
     try {
       if (editingPatient) {
-        await axios.put(`${API}/patients/${editingPatient.id}`, formData);
+        await axios.put(`${API}/patients/${editingPatient.id}`, payload);
         toast.success('Paciente actualizado correctamente');
       } else {
-        await axios.post(`${API}/patients`, formData);
+        await axios.post(`${API}/patients`, payload);
         toast.success('Paciente agregado correctamente');
       }
       await fetchPatients();
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al guardar paciente');
+      const detail = err.response?.data?.detail;
+      const msg = Array.isArray(detail)
+        ? detail.map(d => d.msg).join(', ')
+        : (typeof detail === 'string' ? detail : 'Error al guardar paciente');
+      toast.error(msg);
       return;
     }
 
