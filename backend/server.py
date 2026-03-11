@@ -599,6 +599,27 @@ async def get_doctor(doctor_id: str, current_user: dict = Depends(get_current_us
 async def get_active_doctors(current_user: dict = Depends(get_current_user)):
     return await db.doctors.find({"activo": True}, {"_id": 0}).to_list(500)
 
+@api_router.put("/doctors/{doctor_id}", response_model=Doctor, tags=["Doctores"])
+async def update_doctor(doctor_id: str, doctor_data: DoctorCreate, _: dict = Depends(require_admin)):
+    existing = await db.doctors.find_one({"id": doctor_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Doctor no encontrado")
+    # Verify email uniqueness if changing it
+    if doctor_data.email != existing["email"]:
+        conflict = await db.doctors.find_one({"email": doctor_data.email, "id": {"$ne": doctor_id}})
+        if conflict:
+            raise HTTPException(status_code=400, detail="Ya existe un doctor con ese email")
+    await db.doctors.update_one({"id": doctor_id}, {"$set": doctor_data.model_dump()})
+    updated = await db.doctors.find_one({"id": doctor_id}, {"_id": 0})
+    return Doctor(**updated)
+
+@api_router.delete("/doctors/{doctor_id}", response_model=MessageResponse, tags=["Doctores"])
+async def delete_doctor(doctor_id: str, _: dict = Depends(require_admin)):
+    result = await db.doctors.delete_one({"id": doctor_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Doctor no encontrado")
+    return MessageResponse(message="Doctor eliminado correctamente")
+
 # ============ PATIENTS ROUTES ============
 
 @api_router.get("/patients", response_model=List[Patient], tags=["Pacientes"])

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import { Layout } from '../components/Layout';
 import { Odontogram } from '../components/Odontogram';
 import { NotesTimeline } from '../components/NotesTimeline';
@@ -11,13 +12,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { Separator } from '../components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
 import { toast } from 'sonner';
-import { 
-  mockPatients, 
-  mockAppointments, 
-  mockClinicalNotes, 
-  mockOdontogramData,
-  mockMedicalFiles 
-} from '../utils/mockData';
+
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 import { 
   ArrowLeft, 
   Phone, 
@@ -37,19 +33,49 @@ import { es } from 'date-fns/locale';
 export const PatientDetail = () => {
   const { patientId } = useParams();
   const navigate = useNavigate();
-  
-  // Find patient from mock data
-  const patient = mockPatients.find(p => p.id === patientId);
-  
-  // Get related data
-  const patientAppointments = mockAppointments.filter(a => a.paciente_id === patientId);
-  const patientNotes = mockClinicalNotes.filter(n => n.paciente_id === patientId);
-  const patientFiles = mockMedicalFiles.filter(f => f.paciente_id === patientId);
-  const odontogramData = mockOdontogramData[patientId] || [];
-  
-  const [notes, setNotes] = useState(patientNotes);
-  const [teethData, setTeethData] = useState(odontogramData);
+
+  const [patient, setPatient] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [patientAppointments, setPatientAppointments] = useState([]);
+  const [notes, setNotes] = useState([]);
+  const [teethData, setTeethData] = useState([]);
   const [selectedImage, setSelectedImage] = useState(null);
+
+  useEffect(() => {
+    const fetchAll = async () => {
+      try {
+        const [patientRes, aptsRes, notesRes, odontogramRes] = await Promise.all([
+          axios.get(`${API}/patients/${patientId}`),
+          axios.get(`${API}/appointments`, { params: { limit: 200 } }),
+          axios.get(`${API}/patients/${patientId}/notas`),
+          axios.get(`${API}/patients/${patientId}/odontogram`),
+        ]);
+        setPatient(patientRes.data);
+        setPatientAppointments(aptsRes.data.filter(a => a.paciente_id === patientId));
+        setNotes(notesRes.data);
+        setTeethData(odontogramRes.data.dientes || []);
+      } catch (err) {
+        if (err.response?.status === 404) {
+          setPatient(null);
+        } else {
+          toast.error('Error al cargar datos del paciente');
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchAll();
+  }, [patientId]);
+
+  if (loading) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center min-h-[50vh]">
+          <p className="text-muted-foreground">Cargando expediente...</p>
+        </div>
+      </Layout>
+    );
+  }
 
   if (!patient) {
     return (
@@ -64,37 +90,43 @@ export const PatientDetail = () => {
     );
   }
 
-  const handleAddNote = (noteData) => {
-    const newNote = {
-      id: `note-${Date.now()}`,
-      paciente_id: patientId,
-      doctor_id: 'doc-001',
-      doctor_nombre: 'Dr. Usuario Actual',
-      contenido: noteData.contenido,
-      tags: noteData.tags,
-      fecha: new Date().toISOString(),
-    };
-    setNotes([newNote, ...notes]);
-    toast.success('Nota clínica agregada');
+  const handleAddNote = async (noteData) => {
+    try {
+      const res = await axios.post(`${API}/patients/${patientId}/notas`, {
+        paciente_id: patientId,
+        contenido: noteData.contenido,
+        tags: noteData.tags,
+      });
+      setNotes([res.data, ...notes]);
+      toast.success('Nota clínica agregada');
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al agregar nota');
+    }
   };
 
-  const handleOdontogramUpdate = (update) => {
+  const handleOdontogramUpdate = async (update) => {
+    // Optimistic update
     setTeethData(prev => {
       const existing = prev.find(t => t.numero === update.diente_numero);
       if (existing) {
-        return prev.map(t => 
-          t.numero === update.diente_numero 
+        return prev.map(t =>
+          t.numero === update.diente_numero
             ? { ...t, zonas: { ...t.zonas, [update.zona]: update.estado } }
             : t
         );
       } else {
-        return [...prev, { 
-          numero: update.diente_numero, 
-          zonas: { [update.zona]: update.estado } 
+        return [...prev, {
+          numero: update.diente_numero,
+          zonas: { [update.zona]: update.estado }
         }];
       }
     });
-    toast.success('Odontograma actualizado');
+    try {
+      await axios.put(`${API}/patients/${patientId}/odontogram`, update);
+      toast.success('Odontograma actualizado');
+    } catch (err) {
+      toast.error('Error al guardar odontograma');
+    }
   };
 
   const getInitials = (name) => {
@@ -325,9 +357,9 @@ export const PatientDetail = () => {
                 </p>
               </CardHeader>
               <CardContent>
-                {patientFiles.length > 0 ? (
+                {false ? (
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                    {patientFiles.map(file => (
+                    {[].map(file => (
                       <Dialog key={file.id}>
                         <DialogTrigger asChild>
                           <div 

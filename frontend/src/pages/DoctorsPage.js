@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import { Layout } from '../components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -11,18 +12,19 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Switch } from '../components/ui/switch';
 import { toast } from 'sonner';
-import { mockDoctors } from '../utils/mockData';
-import { 
-  Plus, 
-  Search, 
-  Pencil, 
-  Trash2, 
+import {
+  Plus,
+  Search,
+  Pencil,
+  Trash2,
   Stethoscope,
   Mail,
   Phone,
   UserCheck,
   UserX
 } from 'lucide-react';
+
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 const SPECIALTIES = [
   'Odontología General',
@@ -47,12 +49,12 @@ const COLORS = [
 
 export const DoctorsPage = () => {
   const navigate = useNavigate();
-  const [doctors, setDoctors] = useState(mockDoctors);
+  const [doctors, setDoctors] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingDoctor, setEditingDoctor] = useState(null);
-  
-  // Form state
+
   const [formData, setFormData] = useState({
     nombre: '',
     especialidad: '',
@@ -62,7 +64,22 @@ export const DoctorsPage = () => {
     activo: true,
   });
 
-  const filteredDoctors = doctors.filter(d => 
+  useEffect(() => {
+    fetchDoctors();
+  }, []);
+
+  const fetchDoctors = async () => {
+    try {
+      const res = await axios.get(`${API}/doctors`);
+      setDoctors(res.data);
+    } catch (err) {
+      toast.error('Error al cargar doctores');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredDoctors = doctors.filter(d =>
     d.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
     d.especialidad.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -92,6 +109,7 @@ export const DoctorsPage = () => {
         telefono: doctor.telefono,
         color: doctor.color,
         activo: doctor.activo,
+        avatar_url: doctor.avatar_url || null,
       });
     } else {
       resetForm();
@@ -99,51 +117,59 @@ export const DoctorsPage = () => {
     setIsDialogOpen(true);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!formData.nombre || !formData.especialidad || !formData.email || !formData.telefono) {
       toast.error('Por favor completa todos los campos');
       return;
     }
 
-    if (editingDoctor) {
-      // Update existing
-      setDoctors(prev => prev.map(d => 
-        d.id === editingDoctor.id 
-          ? { ...d, ...formData }
-          : d
-      ));
-      toast.success('Doctor actualizado correctamente');
-    } else {
-      // Create new
-      const newDoctor = {
-        id: `doc-${Date.now()}`,
-        ...formData,
-        avatar_url: null,
-        citas_hoy: 0,
-        created_at: new Date().toISOString(),
-      };
-      setDoctors(prev => [...prev, newDoctor]);
-      toast.success('Doctor agregado correctamente');
+    try {
+      if (editingDoctor) {
+        await axios.put(`${API}/doctors/${editingDoctor.id}`, formData);
+        toast.success('Doctor actualizado correctamente');
+      } else {
+        await axios.post(`${API}/doctors`, formData);
+        toast.success('Doctor agregado correctamente');
+      }
+      await fetchDoctors();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al guardar doctor');
+      return;
     }
-    
+
     setIsDialogOpen(false);
     resetForm();
   };
 
-  const handleDelete = (doctorId) => {
-    if (window.confirm('¿Estás seguro de eliminar este doctor?')) {
-      setDoctors(prev => prev.filter(d => d.id !== doctorId));
+  const handleDelete = async (doctorId) => {
+    if (!window.confirm('¿Estás seguro de eliminar este doctor?')) return;
+    try {
+      await axios.delete(`${API}/doctors/${doctorId}`);
       toast.success('Doctor eliminado');
+      setDoctors(prev => prev.filter(d => d.id !== doctorId));
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al eliminar doctor');
     }
   };
 
-  const handleToggleActive = (doctorId) => {
-    setDoctors(prev => prev.map(d => 
-      d.id === doctorId ? { ...d, activo: !d.activo } : d
-    ));
-    toast.success('Estado actualizado');
+  const handleToggleActive = async (doctor) => {
+    try {
+      await axios.put(`${API}/doctors/${doctor.id}`, {
+        nombre: doctor.nombre,
+        especialidad: doctor.especialidad,
+        email: doctor.email,
+        telefono: doctor.telefono,
+        color: doctor.color,
+        activo: !doctor.activo,
+        avatar_url: doctor.avatar_url || null,
+      });
+      toast.success('Estado actualizado');
+      setDoctors(prev => prev.map(d => d.id === doctor.id ? { ...d, activo: !d.activo } : d));
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al actualizar estado');
+    }
   };
 
   const getInitials = (name) => {
@@ -185,11 +211,11 @@ export const DoctorsPage = () => {
                     data-testid="doctor-name-input"
                   />
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="especialidad">Especialidad</Label>
-                  <Select 
-                    value={formData.especialidad} 
+                  <Select
+                    value={formData.especialidad}
                     onValueChange={(v) => setFormData({ ...formData, especialidad: v })}
                   >
                     <SelectTrigger data-testid="doctor-specialty-select">
@@ -202,7 +228,7 @@ export const DoctorsPage = () => {
                     </SelectContent>
                   </Select>
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="email">Correo Electrónico</Label>
                   <Input
@@ -214,7 +240,7 @@ export const DoctorsPage = () => {
                     data-testid="doctor-email-input"
                   />
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="telefono">Teléfono</Label>
                   <Input
@@ -225,7 +251,7 @@ export const DoctorsPage = () => {
                     data-testid="doctor-phone-input"
                   />
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label>Color en Calendario</Label>
                   <div className="flex gap-2 flex-wrap">
@@ -234,8 +260,8 @@ export const DoctorsPage = () => {
                         key={color.value}
                         type="button"
                         className={`w-8 h-8 rounded-full border-2 transition-all ${
-                          formData.color === color.value 
-                            ? 'border-foreground scale-110' 
+                          formData.color === color.value
+                            ? 'border-foreground scale-110'
                             : 'border-transparent'
                         }`}
                         style={{ backgroundColor: color.value }}
@@ -245,7 +271,7 @@ export const DoctorsPage = () => {
                     ))}
                   </div>
                 </div>
-                
+
                 <div className="flex items-center justify-between">
                   <Label htmlFor="activo">Doctor Activo</Label>
                   <Switch
@@ -254,7 +280,7 @@ export const DoctorsPage = () => {
                     onCheckedChange={(v) => setFormData({ ...formData, activo: v })}
                   />
                 </div>
-                
+
                 <div className="flex gap-2 pt-4">
                   <Button type="button" variant="outline" className="flex-1" onClick={() => setIsDialogOpen(false)}>
                     Cancelar
@@ -281,7 +307,7 @@ export const DoctorsPage = () => {
               </div>
             </CardContent>
           </Card>
-          
+
           <Card className="bg-card border-border/50">
             <CardContent className="p-4 flex items-center gap-3">
               <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
@@ -293,7 +319,7 @@ export const DoctorsPage = () => {
               </div>
             </CardContent>
           </Card>
-          
+
           <Card className="bg-card border-border/50">
             <CardContent className="p-4 flex items-center gap-3">
               <div className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800">
@@ -327,98 +353,102 @@ export const DoctorsPage = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {filteredDoctors.map(doctor => (
-                <div
-                  key={doctor.id}
-                  className={`flex items-center gap-4 p-4 rounded-xl border border-border/50 transition-all ${
-                    doctor.activo 
-                      ? 'bg-card hover:bg-muted/50' 
-                      : 'bg-muted/30 opacity-60'
-                  }`}
-                  data-testid={`doctor-row-${doctor.id}`}
-                >
-                  <div className="relative">
-                    <Avatar className="h-12 w-12 border-2" style={{ borderColor: doctor.color }}>
-                      <AvatarImage src={doctor.avatar_url} />
-                      <AvatarFallback style={{ backgroundColor: `${doctor.color}20`, color: doctor.color }}>
-                        {getInitials(doctor.nombre)}
-                      </AvatarFallback>
-                    </Avatar>
-                    {doctor.activo && (
-                      <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-card bg-emerald-500" />
-                    )}
-                  </div>
-                  
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="font-semibold truncate">{doctor.nombre}</p>
-                      <Badge 
-                        variant={doctor.activo ? 'default' : 'secondary'}
-                        className="text-xs"
-                      >
-                        {doctor.activo ? 'Activo' : 'Inactivo'}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground">{doctor.especialidad}</p>
-                    <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Mail className="h-3 w-3" />
-                        {doctor.email}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Phone className="h-3 w-3" />
-                        {doctor.telefono}
-                      </span>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center gap-2">
-                    <div 
-                      className="w-4 h-4 rounded-full border"
-                      style={{ backgroundColor: doctor.color }}
-                      title="Color en calendario"
-                    />
-                    <Button 
-                      variant="ghost" 
-                      size="icon"
-                      onClick={() => handleOpenDialog(doctor)}
-                      data-testid={`edit-doctor-${doctor.id}`}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="icon"
-                      onClick={() => handleToggleActive(doctor.id)}
-                      title={doctor.activo ? 'Desactivar' : 'Activar'}
-                    >
-                      {doctor.activo ? (
-                        <UserX className="h-4 w-4 text-muted-foreground" />
-                      ) : (
-                        <UserCheck className="h-4 w-4 text-emerald-600" />
+            {loading ? (
+              <p className="text-center py-8 text-muted-foreground">Cargando doctores...</p>
+            ) : (
+              <div className="space-y-3">
+                {filteredDoctors.map(doctor => (
+                  <div
+                    key={doctor.id}
+                    className={`flex items-center gap-4 p-4 rounded-xl border border-border/50 transition-all ${
+                      doctor.activo
+                        ? 'bg-card hover:bg-muted/50'
+                        : 'bg-muted/30 opacity-60'
+                    }`}
+                    data-testid={`doctor-row-${doctor.id}`}
+                  >
+                    <div className="relative">
+                      <Avatar className="h-12 w-12 border-2" style={{ borderColor: doctor.color }}>
+                        <AvatarImage src={doctor.avatar_url} />
+                        <AvatarFallback style={{ backgroundColor: `${doctor.color}20`, color: doctor.color }}>
+                          {getInitials(doctor.nombre)}
+                        </AvatarFallback>
+                      </Avatar>
+                      {doctor.activo && (
+                        <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-card bg-emerald-500" />
                       )}
-                    </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="icon"
-                      onClick={() => handleDelete(doctor.id)}
-                      className="text-destructive hover:text-destructive"
-                      data-testid={`delete-doctor-${doctor.id}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold truncate">{doctor.nombre}</p>
+                        <Badge
+                          variant={doctor.activo ? 'default' : 'secondary'}
+                          className="text-xs"
+                        >
+                          {doctor.activo ? 'Activo' : 'Inactivo'}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground">{doctor.especialidad}</p>
+                      <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <Mail className="h-3 w-3" />
+                          {doctor.email}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Phone className="h-3 w-3" />
+                          {doctor.telefono}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="w-4 h-4 rounded-full border"
+                        style={{ backgroundColor: doctor.color }}
+                        title="Color en calendario"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleOpenDialog(doctor)}
+                        data-testid={`edit-doctor-${doctor.id}`}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleToggleActive(doctor)}
+                        title={doctor.activo ? 'Desactivar' : 'Activar'}
+                      >
+                        {doctor.activo ? (
+                          <UserX className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <UserCheck className="h-4 w-4 text-emerald-600" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDelete(doctor.id)}
+                        className="text-destructive hover:text-destructive"
+                        data-testid={`delete-doctor-${doctor.id}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              ))}
-              
-              {filteredDoctors.length === 0 && (
-                <div className="text-center py-12 text-muted-foreground">
-                  <Stethoscope className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>No se encontraron doctores</p>
-                </div>
-              )}
-            </div>
+                ))}
+
+                {filteredDoctors.length === 0 && (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <Stethoscope className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>No se encontraron doctores</p>
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

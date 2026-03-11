@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import { Layout } from '../components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Input } from '../components/ui/input';
@@ -11,8 +12,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '../components/ui/alert-dialog';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { toast } from 'sonner';
-import { mockPatients } from '../utils/mockData';
 import { Search, Plus, Users, AlertTriangle, Pencil, X, Trash2 } from 'lucide-react';
+
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 // Default avatar for patients without photos
 const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200&blur=20';
@@ -20,13 +22,29 @@ const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1535713875002-d1d0cf37
 export const PatientsPage = () => {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
-  const [patients, setPatients] = useState(mockPatients);
+  const [patients, setPatients] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPatient, setEditingPatient] = useState(null);
-  
+
   // Delete confirmation
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [patientToDelete, setPatientToDelete] = useState(null);
+
+  useEffect(() => {
+    fetchPatients();
+  }, []);
+
+  const fetchPatients = async () => {
+    try {
+      const res = await axios.get(`${API}/patients`, { params: { limit: 200 } });
+      setPatients(res.data);
+    } catch (err) {
+      toast.error('Error al cargar pacientes');
+    } finally {
+      setLoading(false);
+    }
+  };
   
   // Form state
   const [formData, setFormData] = useState({
@@ -89,32 +107,28 @@ export const PatientsPage = () => {
     }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!formData.nombre || !formData.apellido || !formData.telefono || !formData.fecha_nacimiento) {
       toast.error('Por favor completa los campos obligatorios');
       return;
     }
 
-    if (editingPatient) {
-      setPatients(prev => prev.map(p => 
-        p.id === editingPatient.id 
-          ? { ...p, ...formData }
-          : p
-      ));
-      toast.success('Paciente actualizado correctamente');
-    } else {
-      const newPatient = {
-        id: `pat-${Date.now()}`,
-        ...formData,
-        avatar_url: null,
-        created_at: new Date().toISOString(),
-      };
-      setPatients(prev => [...prev, newPatient]);
-      toast.success('Paciente agregado correctamente');
+    try {
+      if (editingPatient) {
+        await axios.put(`${API}/patients/${editingPatient.id}`, formData);
+        toast.success('Paciente actualizado correctamente');
+      } else {
+        await axios.post(`${API}/patients`, formData);
+        toast.success('Paciente agregado correctamente');
+      }
+      await fetchPatients();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al guardar paciente');
+      return;
     }
-    
+
     setIsDialogOpen(false);
     resetForm();
   };
@@ -125,13 +139,17 @@ export const PatientsPage = () => {
     setDeleteConfirmOpen(true);
   };
 
-  const handleConfirmDelete = () => {
-    if (patientToDelete) {
-      setPatients(prev => prev.filter(p => p.id !== patientToDelete.id));
+  const handleConfirmDelete = async () => {
+    if (!patientToDelete) return;
+    try {
+      await axios.delete(`${API}/patients/${patientToDelete.id}`);
       toast.success(`Paciente ${patientToDelete.nombre} ${patientToDelete.apellido} eliminado`);
-      setPatientToDelete(null);
-      setDeleteConfirmOpen(false);
+      setPatients(prev => prev.filter(p => p.id !== patientToDelete.id));
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al eliminar paciente');
     }
+    setPatientToDelete(null);
+    setDeleteConfirmOpen(false);
   };
 
   const getInitials = (nombre, apellido) => {
@@ -359,7 +377,10 @@ export const PatientsPage = () => {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {loading ? (
+              <p className="text-center py-8 text-muted-foreground">Cargando pacientes...</p>
+            ) : null}
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {filteredPatients.map(patient => (
                 <div
                   key={patient.id}

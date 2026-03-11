@@ -1,5 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import { Layout } from '../components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -14,7 +15,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popove
 import { Calendar } from '../components/ui/calendar';
 import { cn } from '../lib/utils';
 import { toast } from 'sonner';
-import { mockAppointments, mockPatients, mockDoctors, APPOINTMENT_STATES } from '../utils/mockData';
+import { APPOINTMENT_STATES } from '../utils/mockData';
+
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 import { 
   Clock, 
   AlertTriangle, 
@@ -55,9 +58,27 @@ export const CalendarPage = () => {
   const navigate = useNavigate();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState('week');
-  const [appointments, setAppointments] = useState(mockAppointments);
-  const [patients] = useState(mockPatients);
-  const [doctors] = useState(mockDoctors.filter(d => d.activo));
+  const [appointments, setAppointments] = useState([]);
+  const [patients, setPatients] = useState([]);
+  const [doctors, setDoctors] = useState([]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [aptsRes, patientsRes, doctorsRes] = await Promise.all([
+          axios.get(`${API}/appointments`, { params: { limit: 200 } }),
+          axios.get(`${API}/patients`, { params: { limit: 200 } }),
+          axios.get(`${API}/doctors`),
+        ]);
+        setAppointments(aptsRes.data);
+        setPatients(patientsRes.data);
+        setDoctors(doctorsRes.data.filter(d => d.activo));
+      } catch (err) {
+        toast.error('Error al cargar datos del calendario');
+      }
+    };
+    fetchData();
+  }, []);
   
   // Sheet for appointment details
   const [selectedAppointment, setSelectedAppointment] = useState(null);
@@ -137,33 +158,32 @@ export const CalendarPage = () => {
   };
 
   // Create appointment
-  const handleCreateAppointment = () => {
+  const handleCreateAppointment = async () => {
     if (!newApt.paciente_id || !newApt.doctor_id || !newApt.motivo) {
       toast.error('Por favor completa todos los campos requeridos');
       return;
     }
 
-    const patient = patients.find(p => p.id === newApt.paciente_id);
-    const doctor = doctors.find(d => d.id === newApt.doctor_id);
     const hora_fin = calculateEndTime(newApt.hora_inicio, newApt.duracion);
 
-    const newAppointment = {
-      id: `apt-${Date.now()}`,
-      paciente_id: newApt.paciente_id,
-      doctor_id: newApt.doctor_id,
-      fecha: newApt.fecha,
-      hora_inicio: newApt.hora_inicio,
-      hora_fin: hora_fin,
-      motivo: newApt.motivo,
-      notas: newApt.notas,
-      estado: 'confirmada',
-      paciente_nombre: `${patient?.nombre} ${patient?.apellido}`,
-      doctor_nombre: doctor?.nombre,
-      doctor_color: doctor?.color || '#0ea5e9',
-    };
+    try {
+      const res = await axios.post(`${API}/appointments`, {
+        paciente_id: newApt.paciente_id,
+        doctor_id: newApt.doctor_id,
+        fecha: newApt.fecha,
+        hora_inicio: newApt.hora_inicio,
+        hora_fin: hora_fin,
+        motivo: newApt.motivo,
+        notas: newApt.notas,
+        estado: 'confirmada',
+      });
+      setAppointments(prev => [...prev, res.data]);
+      toast.success(`Cita creada: ${newApt.hora_inicio} - ${hora_fin}`);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al crear cita');
+      return;
+    }
 
-    setAppointments(prev => [...prev, newAppointment]);
-    toast.success(`Cita creada: ${newApt.hora_inicio} - ${hora_fin}`);
     setIsCreateOpen(false);
     setNewApt({
       paciente_id: '',
@@ -196,21 +216,41 @@ export const CalendarPage = () => {
     e.dataTransfer.dropEffect = 'move';
   };
 
-  const handleDrop = (e, date, hour) => {
+  const handleDrop = async (e, date, hour) => {
     e.preventDefault();
     if (!draggedApt) return;
 
     const newDate = format(date, 'yyyy-MM-dd');
     const newStartTime = `${hour.toString().padStart(2, '0')}:00`;
-    const newEndTime = calculateEndTime(newStartTime, 30); // Default 30 min when dragging
+    const newEndTime = calculateEndTime(newStartTime, 30);
 
-    setAppointments(prev => prev.map(apt => 
-      apt.id === draggedApt.id 
+    // Optimistic update
+    setAppointments(prev => prev.map(apt =>
+      apt.id === draggedApt.id
         ? { ...apt, fecha: newDate, hora_inicio: newStartTime, hora_fin: newEndTime }
         : apt
     ));
 
-    toast.success(`Cita movida a ${format(date, 'd MMM', { locale: es })} ${newStartTime}`);
+    try {
+      await axios.put(`${API}/appointments/${draggedApt.id}`, {
+        paciente_id: draggedApt.paciente_id,
+        doctor_id: draggedApt.doctor_id,
+        fecha: newDate,
+        hora_inicio: newStartTime,
+        hora_fin: newEndTime,
+        motivo: draggedApt.motivo,
+        notas: draggedApt.notas || '',
+        estado: draggedApt.estado,
+      });
+      toast.success(`Cita movida a ${format(date, 'd MMM', { locale: es })} ${newStartTime}`);
+    } catch (err) {
+      toast.error('Error al mover la cita');
+      // Revert optimistic update
+      setAppointments(prev => prev.map(apt =>
+        apt.id === draggedApt.id ? draggedApt : apt
+      ));
+    }
+
     setDraggedApt(null);
   };
 
