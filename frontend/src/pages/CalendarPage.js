@@ -18,15 +18,17 @@ import { toast } from 'sonner';
 import { APPOINTMENT_STATES } from '../utils/mockData';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
-import { 
-  Clock, 
-  AlertTriangle, 
-  User, 
-  Plus, 
-  ChevronLeft, 
+import {
+  Clock,
+  AlertTriangle,
+  User,
+  Plus,
+  ChevronLeft,
   ChevronRight,
   CalendarIcon,
-  GripVertical
+  GripVertical,
+  Trash2,
+  XCircle
 } from 'lucide-react';
 import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, addWeeks, subWeeks, startOfMonth, endOfMonth, addMonths, subMonths, eachWeekOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -151,6 +153,30 @@ export const CalendarPage = () => {
   const handleViewPatient = (apt) => {
     setSheetOpen(false);
     navigate(`/patients/${apt.paciente_id}`);
+  };
+
+  const handleCancelAppointment = async (apt) => {
+    if (!window.confirm(`¿Cancelar la cita de ${apt.paciente_nombre}?`)) return;
+    try {
+      await axios.put(`${API}/appointments/${apt.id}/status`, null, { params: { estado: 'cancelada' } });
+      setAppointments(prev => prev.map(a => a.id === apt.id ? { ...a, estado: 'cancelada' } : a));
+      setSelectedAppointment(prev => ({ ...prev, estado: 'cancelada' }));
+      toast.success('Cita cancelada');
+    } catch (err) {
+      toast.error('Error al cancelar la cita');
+    }
+  };
+
+  const handleDeleteAppointment = async (apt) => {
+    if (!window.confirm(`¿Eliminar permanentemente la cita de ${apt.paciente_nombre}? Esta acción no se puede deshacer.`)) return;
+    try {
+      await axios.delete(`${API}/appointments/${apt.id}`);
+      setAppointments(prev => prev.filter(a => a.id !== apt.id));
+      setSheetOpen(false);
+      toast.success('Cita eliminada');
+    } catch (err) {
+      toast.error('Error al eliminar la cita');
+    }
   };
 
   const getPatientForAppointment = (apt) => {
@@ -745,13 +771,31 @@ export const CalendarPage = () => {
                 </div>
                 
                 <div className="space-y-2">
-                  <Button 
-                    className="w-full" 
+                  <Button
+                    className="w-full"
                     onClick={() => handleViewPatient(selectedAppointment)}
                     data-testid="view-patient-btn"
                   >
                     <User className="h-4 w-4 mr-2" />
                     Ver Expediente Completo
+                  </Button>
+                  {selectedAppointment.estado !== 'cancelada' && (
+                    <Button
+                      variant="outline"
+                      className="w-full text-amber-600 border-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/20"
+                      onClick={() => handleCancelAppointment(selectedAppointment)}
+                    >
+                      <XCircle className="h-4 w-4 mr-2" />
+                      Cancelar Cita
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    className="w-full text-destructive border-destructive/30 hover:bg-destructive/10"
+                    onClick={() => handleDeleteAppointment(selectedAppointment)}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Eliminar Cita
                   </Button>
                   <Button variant="outline" className="w-full" onClick={() => setSheetOpen(false)}>
                     Cerrar

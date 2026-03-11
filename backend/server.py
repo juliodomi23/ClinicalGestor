@@ -1179,6 +1179,83 @@ async def webhook_consultar_citas(
     enriched = await enrich_appointments(appointments)
     return {"citas": enriched, "total": len(enriched)}
 
+# ── PUT /webhook/appointments/{apt_id}/cancelar ───────────
+@api_router.put("/webhook/appointments/{apt_id}/cancelar",
+    summary="n8n → Cancelar una cita",
+    tags=["Webhooks n8n"])
+async def webhook_cancelar_cita(
+    apt_id: str,
+    motivo: Optional[str] = None,
+    _: bool = Depends(verify_webhook_key)
+):
+    """Cancela una cita existente (estado → 'cancelada')."""
+    apt = await db.appointments.find_one({"id": apt_id}, {"_id": 0})
+    if not apt:
+        raise HTTPException(404, "Cita no encontrada")
+    if apt["estado"] == "cancelada":
+        return {"mensaje": "La cita ya estaba cancelada", "cita_id": apt_id}
+    await db.appointments.update_one({"id": apt_id}, {"$set": {"estado": "cancelada"}})
+    return {
+        "mensaje":    "Cita cancelada correctamente",
+        "cita_id":   apt_id,
+        "fecha":     apt["fecha"],
+        "hora":      f"{apt['hora_inicio']} – {apt['hora_fin']}",
+        "motivo":    motivo or "Sin motivo especificado",
+    }
+
+# ── PUT /webhook/appointments/{apt_id}/reagendar ──────────
+@api_router.put("/webhook/appointments/{apt_id}/reagendar",
+    summary="n8n → Reagendar una cita",
+    tags=["Webhooks n8n"])
+async def webhook_reagendar_cita(
+    apt_id: str,
+    nueva_fecha: str,
+    nueva_hora: str,
+    motivo: Optional[str] = None,
+    _: bool = Depends(verify_webhook_key)
+):
+    """Mueve una cita a nueva fecha/hora. Calcula hora_fin automáticamente con SLOT_DURATION."""
+    validate_date(nueva_fecha)
+
+    # Validate nueva_hora format HH:MM
+    import re as _re
+    if not _re.match(r'^\d{2}:\d{2}$', nueva_hora):
+        raise HTTPException(400, "nueva_hora debe estar en formato HH:MM")
+
+    apt = await db.appointments.find_one({"id": apt_id}, {"_id": 0})
+    if not apt:
+        raise HTTPException(404, "Cita no encontrada")
+    if apt["estado"] == "cancelada":
+        raise HTTPException(400, "No se puede reagendar una cita cancelada")
+
+    # Calculate new end time using SLOT_DURATION
+    h, m = map(int, nueva_hora.split(':'))
+    total = h * 60 + m + SLOT_DURATION
+    nueva_hora_fin = f"{total // 60:02d}:{total % 60:02d}"
+
+    # Check for conflicts (same doctor, same slot, different apt)
+    conflict = await db.appointments.find_one({
+        "doctor_id":   apt["doctor_id"],
+        "fecha":       nueva_fecha,
+        "hora_inicio": nueva_hora,
+        "estado":      {"$ne": "cancelada"},
+        "id":          {"$ne": apt_id},
+    })
+    if conflict:
+        raise HTTPException(409, f"El doctor ya tiene una cita a las {nueva_hora} el {nueva_fecha}")
+
+    await db.appointments.update_one(
+        {"id": apt_id},
+        {"$set": {"fecha": nueva_fecha, "hora_inicio": nueva_hora, "hora_fin": nueva_hora_fin}}
+    )
+    return {
+        "mensaje":         "Cita reagendada correctamente",
+        "cita_id":        apt_id,
+        "nueva_fecha":    nueva_fecha,
+        "nueva_hora":     f"{nueva_hora} – {nueva_hora_fin}",
+        "motivo":         motivo or "Sin motivo especificado",
+    }
+
 # ── POST /webhook/demo/sembrar ────────────────────────────
 @api_router.post("/webhook/demo/sembrar",
     summary="n8n → Sembrar datos de demostración",
