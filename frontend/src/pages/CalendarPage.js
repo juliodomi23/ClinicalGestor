@@ -16,8 +16,6 @@ import { Calendar } from '../components/ui/calendar';
 import { cn } from '../lib/utils';
 import { toast } from 'sonner';
 import { APPOINTMENT_STATES } from '../utils/mockData';
-
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 import {
   Clock,
   AlertTriangle,
@@ -32,6 +30,8 @@ import {
 } from 'lucide-react';
 import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, addWeeks, subWeeks, startOfMonth, endOfMonth, addMonths, subMonths, eachWeekOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
+
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 const VIEW_TYPES = {
   day: 'Día',
