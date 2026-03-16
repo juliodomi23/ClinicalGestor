@@ -302,6 +302,23 @@ export const CalendarPage = () => {
     setSheetOpen(true);
   };
 
+  const handleAppointmentEditClick = (apt, e) => {
+    e.stopPropagation();
+    const dur = calcDuration(apt.hora_inicio, apt.hora_fin);
+    setSelectedAppointment(apt);
+    setEditData({
+      doctor_id:   apt.doctor_id,
+      fecha:       apt.fecha,
+      hora_inicio: apt.hora_inicio,
+      duracion:    dur > 0 ? dur : clinicConfig.slot_duration,
+      motivo:      apt.motivo,
+      notas:       apt.notas || '',
+      estado:      apt.estado,
+    });
+    setIsEditMode(true);
+    setSheetOpen(true);
+  };
+
   const handleOpenEdit = () => {
     const dur = calcDuration(selectedAppointment.hora_inicio, selectedAppointment.hora_fin);
     setEditData({
@@ -414,7 +431,7 @@ export const CalendarPage = () => {
         onClick={() => handleAppointmentClick(apt)}
         data-testid={`appointment-${apt.id}`}
         className={cn(
-          'absolute left-0 right-0 mx-1 rounded-md border-l-4 px-2 overflow-hidden',
+          'absolute left-0 right-0 mx-1 rounded-md border-l-4 px-2 overflow-hidden group',
           'cursor-grab active:cursor-grabbing hover:brightness-95 transition-all select-none',
           APPOINTMENT_STATES[apt.estado]?.color || 'bg-slate-100',
         )}
@@ -434,7 +451,14 @@ export const CalendarPage = () => {
           <>
             <div className="flex items-center gap-1 mt-0.5">
               <GripVertical className="h-3 w-3 opacity-40 flex-shrink-0" />
-              <span className="text-xs font-semibold truncate">{apt.paciente_nombre}</span>
+              <span className="text-xs font-semibold truncate flex-1">{apt.paciente_nombre}</span>
+              <button
+                onClick={(e) => handleAppointmentEditClick(apt, e)}
+                className="opacity-0 group-hover:opacity-100 transition-opacity rounded p-0.5 hover:bg-black/10 flex-shrink-0"
+                title="Editar cita"
+              >
+                <Pencil className="h-3 w-3" />
+              </button>
             </div>
             <div className="flex items-center gap-1 text-[10px] opacity-75">
               <Clock className="h-3 w-3" />
@@ -493,14 +517,14 @@ export const CalendarPage = () => {
         const top = (h - clinicConfig.work_start) * PX_PER_HOUR;
         return (
           <div key={h}>
-            {/* Línea de hora — sólida y visible */}
+            {/* Línea de hora — sólida */}
             <div
-              className="absolute w-full border-t border-slate-300 dark:border-slate-600"
+              className="absolute w-full border-t border-slate-300 dark:border-slate-500"
               style={{ top }}
             />
-            {/* Línea de media hora — sólida pero más suave */}
+            {/* Línea de media hora — más sutil */}
             <div
-              className="absolute w-full border-t border-slate-200 dark:border-slate-700"
+              className="absolute w-full border-t border-slate-200 dark:border-slate-600"
               style={{ top: top + PX_PER_HOUR / 2 }}
             />
           </div>
@@ -514,16 +538,16 @@ export const CalendarPage = () => {
     <div className="relative flex-shrink-0 w-16 select-none" style={{ height: GRID_HEIGHT }}>
       {HOURS.map((h) => (
         <div key={h}>
-          {/* Hora en punto — más prominente */}
+          {/* Hora en punto */}
           <div
-            className="absolute right-2 text-[11px] font-semibold text-foreground/60 leading-none"
+            className="absolute right-2 text-[11px] font-semibold text-slate-500 dark:text-slate-300 leading-none"
             style={{ top: (h - clinicConfig.work_start) * PX_PER_HOUR - 6 }}
           >
             {h}:00
           </div>
-          {/* Media hora — más sutil */}
+          {/* Media hora */}
           <div
-            className="absolute right-2 text-[10px] font-normal text-muted-foreground/45 leading-none"
+            className="absolute right-2 text-[10px] font-normal text-slate-400 dark:text-slate-500 leading-none"
             style={{ top: (h - clinicConfig.work_start) * PX_PER_HOUR + PX_PER_HOUR / 2 - 5 }}
           >
             {h}:30
@@ -1030,8 +1054,13 @@ export const CalendarPage = () => {
         {/* Sheet detalles / edición de cita */}
         <Sheet open={sheetOpen} onOpenChange={(open) => { setSheetOpen(open); if (!open) setIsEditMode(false); }}>
           <SheetContent className="w-full sm:max-w-md overflow-y-auto">
-            <SheetHeader>
+            <SheetHeader className="flex flex-row items-center justify-between pr-8">
               <SheetTitle>{isEditMode ? 'Editar Cita' : 'Detalles de la Cita'}</SheetTitle>
+              {selectedAppointment && !isEditMode && (
+                <Button variant="outline" size="sm" onClick={handleOpenEdit} className="gap-1.5">
+                  <Pencil className="h-3.5 w-3.5" /> Editar
+                </Button>
+              )}
             </SheetHeader>
 
             {selectedAppointment && !isEditMode && (
@@ -1086,11 +1115,11 @@ export const CalendarPage = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <Button className="w-full" onClick={() => handleViewPatient(selectedAppointment)} data-testid="view-patient-btn">
-                    <User className="h-4 w-4 mr-2" /> Ver Expediente Completo
-                  </Button>
-                  <Button variant="outline" className="w-full" onClick={handleOpenEdit}>
+                  <Button className="w-full" onClick={handleOpenEdit} data-testid="edit-appointment-btn">
                     <Pencil className="h-4 w-4 mr-2" /> Editar Cita
+                  </Button>
+                  <Button variant="outline" className="w-full" onClick={() => handleViewPatient(selectedAppointment)} data-testid="view-patient-btn">
+                    <User className="h-4 w-4 mr-2" /> Ver Expediente Completo
                   </Button>
                   {selectedAppointment.estado !== 'cancelada' && (
                     <Button
