@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import { Stethoscope, Moon, Sun, Eye, EyeOff } from 'lucide-react';
 import axios from 'axios';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+import { API } from '@/lib/api';
 
 export const LoginPage = () => {
   const [isLoading, setIsLoading]       = useState(false);

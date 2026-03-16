@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Layout } from '../components/Layout';
@@ -13,20 +13,27 @@ import { Separator } from '../components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
 import { toast } from 'sonner';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
-import { 
-  ArrowLeft, 
-  Phone, 
-  Mail, 
-  MapPin, 
-  Calendar, 
+import { API } from '@/lib/api';
+import {
+  ArrowLeft,
+  Phone,
+  Mail,
+  MapPin,
+  Calendar,
   AlertTriangle,
   FileImage,
   Plus,
   Clock,
   ExternalLink,
-  Cake
+  Cake,
+  Trash2,
+  FileText,
+  Image,
+  File,
+  HardDriveUpload,
+  Settings2,
 } from 'lucide-react';
+import { ConfirmModal } from '../components/ConfirmModal';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -40,20 +47,33 @@ export const PatientDetail = () => {
   const [notes, setNotes] = useState([]);
   const [teethData, setTeethData] = useState([]);
   const [selectedImage, setSelectedImage] = useState(null);
+  const [archivos, setArchivos] = useState([]);
+  const [uploadingDrive, setUploadingDrive] = useState(false);
+  const [deleteArchivoId, setDeleteArchivoId] = useState(null);
+  const gapiLoaded = useRef(false);
+  const gisLoaded = useRef(false);
+  const tokenClientRef = useRef(null);
+  const pickerCallbackRef = useRef(null);
+
+  const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID;
+  const GOOGLE_API_KEY = process.env.REACT_APP_GOOGLE_API_KEY;
+  const driveEnabled = !!(GOOGLE_CLIENT_ID && GOOGLE_API_KEY);
 
   useEffect(() => {
     const fetchAll = async () => {
       try {
-        const [patientRes, aptsRes, notesRes, odontogramRes] = await Promise.all([
+        const [patientRes, aptsRes, notesRes, odontogramRes, archivosRes] = await Promise.all([
           axios.get(`${API}/patients/${patientId}`),
           axios.get(`${API}/appointments`, { params: { limit: 200 } }),
           axios.get(`${API}/patients/${patientId}/notas`),
           axios.get(`${API}/patients/${patientId}/odontogram`),
+          axios.get(`${API}/patients/${patientId}/archivos`),
         ]);
         setPatient(patientRes.data);
         setPatientAppointments(aptsRes.data.filter(a => a.paciente_id === patientId));
         setNotes(notesRes.data);
         setTeethData(odontogramRes.data.dientes || []);
+        setArchivos(archivosRes.data || []);
       } catch (err) {
         if (err.response?.status === 404) {
           setPatient(null);
@@ -147,6 +167,125 @@ export const PatientDetail = () => {
       age--;
     }
     return age;
+  };
+
+  // ── Google Drive Picker ─────────────────────────────────────────────────────
+
+  const loadGapiScript = useCallback(() => {
+    return new Promise((resolve) => {
+      if (gapiLoaded.current) { resolve(); return; }
+      const s = document.createElement('script');
+      s.src = 'https://apis.google.com/js/api.js';
+      s.onload = () => {
+        window.gapi.load('picker', () => { gapiLoaded.current = true; resolve(); });
+      };
+      document.body.appendChild(s);
+    });
+  }, []);
+
+  const loadGisScript = useCallback(() => {
+    return new Promise((resolve) => {
+      if (gisLoaded.current) { resolve(); return; }
+      const s = document.createElement('script');
+      s.src = 'https://accounts.google.com/gsi/client';
+      s.onload = () => { gisLoaded.current = true; resolve(); };
+      document.body.appendChild(s);
+    });
+  }, []);
+
+  const showPicker = useCallback((accessToken) => {
+    const view = new window.google.picker.DocsView()
+      .setIncludeFolders(false)
+      .setMimeTypes('image/jpeg,image/png,image/webp,application/pdf,image/gif');
+    const picker = new window.google.picker.PickerBuilder()
+      .addView(view)
+      .setOAuthToken(accessToken)
+      .setDeveloperKey(GOOGLE_API_KEY)
+      .setCallback(pickerCallbackRef.current)
+      .build();
+    picker.setVisible(true);
+  }, [GOOGLE_API_KEY]);
+
+  const handleDrivePicker = useCallback(async () => {
+    if (!driveEnabled) return;
+    setUploadingDrive(true);
+    try {
+      await Promise.all([loadGapiScript(), loadGisScript()]);
+
+      pickerCallbackRef.current = async (data) => {
+        if (data.action !== window.google.picker.Action.PICKED) {
+          setUploadingDrive(false);
+          return;
+        }
+        const doc = data.docs[0];
+        const fileId = doc.id;
+        const mimeType = doc.mimeType || '';
+        const tipo = mimeType.startsWith('image/') ? 'imagen'
+          : mimeType === 'application/pdf' ? 'pdf'
+          : 'documento';
+        const url = `https://drive.google.com/file/d/${fileId}/view`;
+        try {
+          const res = await axios.post(`${API}/patients/${patientId}/archivos`, {
+            paciente_id: patientId,
+            nombre: doc.name,
+            tipo,
+            url,
+            descripcion: null,
+          });
+          setArchivos(prev => [res.data, ...prev]);
+          toast.success(`"${doc.name}" vinculado correctamente`);
+        } catch {
+          toast.error('Error al guardar el archivo');
+        } finally {
+          setUploadingDrive(false);
+        }
+      };
+
+      if (!tokenClientRef.current) {
+        tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
+          client_id: GOOGLE_CLIENT_ID,
+          scope: 'https://www.googleapis.com/auth/drive.readonly',
+          callback: (resp) => {
+            if (resp.error) { setUploadingDrive(false); return; }
+            showPicker(resp.access_token);
+          },
+        });
+      }
+      tokenClientRef.current.requestAccessToken({ prompt: '' });
+    } catch {
+      toast.error('Error al cargar Google Drive');
+      setUploadingDrive(false);
+    }
+  }, [driveEnabled, loadGapiScript, loadGisScript, showPicker, patientId, GOOGLE_CLIENT_ID]);
+
+  const handleDeleteArchivo = async () => {
+    if (!deleteArchivoId) return;
+    try {
+      await axios.delete(`${API}/patients/${patientId}/archivos/${deleteArchivoId}`);
+      setArchivos(prev => prev.filter(a => a.id !== deleteArchivoId));
+      toast.success('Archivo eliminado');
+    } catch {
+      toast.error('Error al eliminar archivo');
+    } finally {
+      setDeleteArchivoId(null);
+    }
+  };
+
+  const getDriveFileId = (url) => {
+    const m = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+    return m ? m[1] : null;
+  };
+
+  const getThumbnail = (archivo) => {
+    const fileId = getDriveFileId(archivo.url);
+    if (fileId) return `https://drive.google.com/thumbnail?id=${fileId}&sz=w400`;
+    return null;
+  };
+
+  const FileTypeIcon = ({ tipo }) => {
+    if (tipo === 'imagen') return <Image className="h-8 w-8 text-sky-400" />;
+    if (tipo === 'pdf') return <FileText className="h-8 w-8 text-rose-400" />;
+    return <File className="h-8 w-8 text-slate-400" />;
   };
 
   // Sort appointments by date
@@ -348,68 +487,124 @@ export const PatientDetail = () => {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-lg font-semibold">Radiografías y Archivos</CardTitle>
-                  <Button size="sm" disabled>
-                    <Plus className="h-4 w-4 mr-1" />
-                    Subir Archivo
-                  </Button>
+                  {driveEnabled ? (
+                    <Button size="sm" onClick={handleDrivePicker} disabled={uploadingDrive}>
+                      <HardDriveUpload className="h-4 w-4 mr-1" />
+                      {uploadingDrive ? 'Cargando...' : 'Vincular desde Drive'}
+                    </Button>
+                  ) : (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Settings2 className="h-4 w-4" />
+                      <span>Configura <code className="text-xs bg-muted px-1 rounded">REACT_APP_GOOGLE_CLIENT_ID</code> para activar Drive</span>
+                    </div>
+                  )}
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  Integración con Google Drive próximamente disponible
-                </p>
+                {driveEnabled && (
+                  <p className="text-sm text-muted-foreground">
+                    Los archivos se vinculan desde tu Google Drive — no se almacenan en el servidor.
+                  </p>
+                )}
               </CardHeader>
               <CardContent>
-                {false ? (
+                {archivos.length > 0 ? (
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                    {[].map(file => (
-                      <Dialog key={file.id}>
-                        <DialogTrigger asChild>
-                          <div 
-                            className="group relative aspect-square rounded-xl overflow-hidden border border-border cursor-pointer hover:border-primary/50 transition-colors"
-                            data-testid={`file-${file.id}`}
-                          >
-                            <img 
-                              src={file.url} 
-                              alt={file.nombre}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
-                              <div className="absolute bottom-0 left-0 right-0 p-3">
-                                <p className="text-white text-sm font-medium truncate">{file.nombre}</p>
-                                <p className="text-white/70 text-xs">{formatDate(file.fecha)}</p>
+                    {archivos.map(archivo => {
+                      const thumbnail = getThumbnail(archivo);
+                      return (
+                        <div key={archivo.id} className="group relative">
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <div
+                                className="relative aspect-square rounded-xl overflow-hidden border border-border cursor-pointer hover:border-primary/50 transition-colors bg-muted/30"
+                                data-testid={`file-${archivo.id}`}
+                              >
+                                {thumbnail ? (
+                                  <img
+                                    src={thumbnail}
+                                    alt={archivo.nombre}
+                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                    onError={e => { e.target.style.display = 'none'; }}
+                                  />
+                                ) : (
+                                  <div className="flex items-center justify-center w-full h-full">
+                                    <FileTypeIcon tipo={archivo.tipo} />
+                                  </div>
+                                )}
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <div className="absolute bottom-0 left-0 right-0 p-3">
+                                    <p className="text-white text-xs font-medium truncate">{archivo.nombre}</p>
+                                    <p className="text-white/70 text-xs">{formatDate(archivo.fecha)}</p>
+                                  </div>
+                                </div>
                               </div>
-                            </div>
-                          </div>
-                        </DialogTrigger>
-                        <DialogContent className="max-w-3xl">
-                          <DialogHeader>
-                            <DialogTitle>{file.nombre}</DialogTitle>
-                          </DialogHeader>
-                          <div className="mt-4">
-                            <img 
-                              src={file.url} 
-                              alt={file.nombre}
-                              className="w-full rounded-lg"
-                            />
-                            {file.descripcion && (
-                              <p className="mt-4 text-muted-foreground">{file.descripcion}</p>
-                            )}
-                            <p className="mt-2 text-sm text-muted-foreground">
-                              Fecha: {formatDate(file.fecha)}
-                            </p>
-                          </div>
-                        </DialogContent>
-                      </Dialog>
-                    ))}
+                            </DialogTrigger>
+                            <DialogContent className="max-w-2xl">
+                              <DialogHeader>
+                                <DialogTitle className="flex items-center gap-2">
+                                  <FileTypeIcon tipo={archivo.tipo} />
+                                  {archivo.nombre}
+                                </DialogTitle>
+                              </DialogHeader>
+                              <div className="mt-2 space-y-4">
+                                {thumbnail && (
+                                  <img
+                                    src={thumbnail.replace('w400', 'w800')}
+                                    alt={archivo.nombre}
+                                    className="w-full rounded-lg border border-border"
+                                  />
+                                )}
+                                {archivo.descripcion && (
+                                  <p className="text-muted-foreground text-sm">{archivo.descripcion}</p>
+                                )}
+                                <div className="flex items-center justify-between pt-2">
+                                  <p className="text-xs text-muted-foreground">
+                                    Vinculado el {formatDate(archivo.fecha)}
+                                  </p>
+                                  <Button variant="outline" size="sm" asChild>
+                                    <a href={archivo.url} target="_blank" rel="noreferrer">
+                                      <ExternalLink className="h-3.5 w-3.5 mr-1" />
+                                      Abrir en Drive
+                                    </a>
+                                  </Button>
+                                </div>
+                              </div>
+                            </DialogContent>
+                          </Dialog>
+
+                          {/* Delete button */}
+                          <button
+                            onClick={() => setDeleteArchivoId(archivo.id)}
+                            className="absolute top-2 right-2 p-1 rounded-lg bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-rose-600"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="text-center py-12 text-muted-foreground">
                     <FileImage className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p>No hay archivos registrados</p>
-                    <p className="text-sm mt-1">Los archivos aparecerán aquí cuando se suba alguno</p>
+                    <p>No hay archivos vinculados</p>
+                    {driveEnabled ? (
+                      <p className="text-sm mt-1">Usa "Vincular desde Drive" para agregar radiografías y documentos</p>
+                    ) : (
+                      <p className="text-sm mt-1">Configura las variables de Google Drive en <code className="text-xs">.env</code> para activar esta función</p>
+                    )}
                   </div>
                 )}
               </CardContent>
             </Card>
+
+            <ConfirmModal
+              open={!!deleteArchivoId}
+              onOpenChange={open => !open && setDeleteArchivoId(null)}
+              title="¿Eliminar archivo?"
+              description="El archivo se desvinculará del expediente. No se eliminará de Google Drive."
+              variant="danger"
+              confirmLabel="Eliminar"
+              onConfirm={handleDeleteArchivo}
+            />
           </TabsContent>
         </Tabs>
       </div>

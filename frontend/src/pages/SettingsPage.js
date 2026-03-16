@@ -15,8 +15,9 @@ import {
   Moon, Sun, User, Bell, Shield, Database,
   Users, UserPlus, Trash2, Eye, EyeOff, RefreshCw
 } from 'lucide-react';
+import { ConfirmModal } from '../components/ConfirmModal';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+import { API } from '@/lib/api';
 
 const ROL_LABELS = {
   admin:     'Administrador',
@@ -43,6 +44,7 @@ const DOCTOR_COLORS = [
 // ── Sección de gestión de usuarios (solo admin) ────────────────────────────
 const UsersSection = ({ currentUser }) => {
   const [users, setUsers]           = useState([]);
+  const [deleteUser, setDeleteUser] = useState(null); // { id, nombre }
   const [loadingUsers, setLoading]  = useState(false);
   const [showForm, setShowForm]     = useState(false);
   const [showPass, setShowPass]     = useState(false);
@@ -105,14 +107,16 @@ const UsersSection = ({ currentUser }) => {
     }
   };
 
-  const handleDelete = async (uid, nombre) => {
-    if (!window.confirm(`¿Eliminar el usuario "${nombre}"?`)) return;
+  const handleDelete = async () => {
+    if (!deleteUser) return;
     try {
-      await axios.delete(`${API}/admin/usuarios/${uid}`);
+      await axios.delete(`${API}/admin/usuarios/${deleteUser.id}`);
       toast.success('Usuario eliminado');
       loadUsers();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Error al eliminar usuario');
+    } finally {
+      setDeleteUser(null);
     }
   };
 
@@ -293,7 +297,7 @@ const UsersSection = ({ currentUser }) => {
                       size="icon"
                       variant="ghost"
                       className="h-7 w-7 text-destructive hover:text-destructive"
-                      onClick={() => handleDelete(u.id, u.nombre)}
+                      onClick={() => setDeleteUser({ id: u.id, nombre: u.nombre })}
                       title="Eliminar usuario"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -498,6 +502,16 @@ export const SettingsPage = () => {
           </CardContent>
         </Card>
       </div>
+
+      <ConfirmModal
+        open={!!deleteUser}
+        onOpenChange={open => !open && setDeleteUser(null)}
+        title="¿Eliminar usuario?"
+        description={`Se eliminará permanentemente la cuenta de "${deleteUser?.nombre}". Esta acción no se puede deshacer.`}
+        variant="danger"
+        confirmLabel="Eliminar"
+        onConfirm={handleDelete}
+      />
     </Layout>
   );
 };

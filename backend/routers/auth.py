@@ -93,3 +93,16 @@ async def login(credentials: UserLogin):
 @router.get("/me", response_model=UserResponse)
 async def get_me(current_user: dict = Depends(get_current_user)):
     return UserResponse(**current_user)
+
+
+@router.post("/refresh", response_model=TokenResponse)
+async def refresh_token(current_user: dict = Depends(get_current_user)):
+    """
+    Renueva el JWT del usuario autenticado.
+    El frontend lo llama cuando el token está cerca de expirar (< 60 min).
+    """
+    new_token = create_token(current_user["id"], current_user["email"], current_user["rol"])
+    return TokenResponse(
+        access_token=new_token,
+        user=UserResponse(**current_user),
+    )

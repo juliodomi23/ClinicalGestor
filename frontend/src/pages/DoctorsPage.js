@@ -9,6 +9,7 @@ import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { ConfirmModal } from '../components/ConfirmModal';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Switch } from '../components/ui/switch';
 import { toast } from 'sonner';
@@ -23,7 +24,7 @@ import {
   UserX
 } from 'lucide-react';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+import { API } from '@/lib/api';
 
 const SPECIALTIES = [
   'Odontología General',
@@ -52,6 +53,7 @@ export const DoctorsPage = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [deleteDoctorId, setDeleteDoctorId] = useState(null);
   const [editingDoctor, setEditingDoctor] = useState(null);
 
   const [formData, setFormData] = useState({
@@ -143,14 +145,16 @@ export const DoctorsPage = () => {
     resetForm();
   };
 
-  const handleDelete = async (doctorId) => {
-    if (!window.confirm('¿Estás seguro de eliminar este doctor?')) return;
+  const handleDelete = async () => {
+    if (!deleteDoctorId) return;
     try {
-      await axios.delete(`${API}/doctors/${doctorId}`);
+      await axios.delete(`${API}/doctors/${deleteDoctorId}`);
       toast.success('Doctor eliminado');
-      setDoctors(prev => prev.filter(d => d.id !== doctorId));
+      setDoctors(prev => prev.filter(d => d.id !== deleteDoctorId));
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Error al eliminar doctor');
+    } finally {
+      setDeleteDoctorId(null);
     }
   };
 
@@ -425,7 +429,7 @@ export const DoctorsPage = () => {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => handleDelete(doctor.id)}
+                        onClick={() => setDeleteDoctorId(doctor.id)}
                         className="text-destructive hover:text-destructive"
                         data-testid={`delete-doctor-${doctor.id}`}
                       >
@@ -446,6 +450,16 @@ export const DoctorsPage = () => {
           </CardContent>
         </Card>
       </div>
+
+      <ConfirmModal
+        open={!!deleteDoctorId}
+        onOpenChange={open => !open && setDeleteDoctorId(null)}
+        title="¿Eliminar doctor?"
+        description="Esta acción no se puede deshacer. El doctor será eliminado permanentemente del sistema."
+        variant="danger"
+        confirmLabel="Eliminar"
+        onConfirm={handleDelete}
+      />
     </Layout>
   );
 };

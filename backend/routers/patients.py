@@ -3,13 +3,13 @@ import uuid
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Optional, Any, Dict
 
 from fastapi import APIRouter, HTTPException, Depends, Query
 
 from auth import get_current_user, require_admin
 from database import db
-from models import PatientCreate, Patient, MessageResponse
+from models import PatientCreate, Patient, MessageResponse, safe_regex
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/patients", tags=["Pacientes"])
@@ -17,11 +17,24 @@ router = APIRouter(prefix="/patients", tags=["Pacientes"])
 
 @router.get("", response_model=List[Patient])
 async def get_patients(
-    skip:  int = Query(0,  ge=0),
-    limit: int = Query(50, ge=1, le=200),
+    skip:   int = Query(0,  ge=0),
+    limit:  int = Query(50, ge=1, le=200),
+    search: Optional[str] = Query(None, description="Busca por nombre, apellido o teléfono"),
     current_user: dict = Depends(get_current_user),
 ):
-    return await db.patients.find({}, {"_id": 0}).skip(skip).limit(limit).to_list(None)
+    query: Dict[str, Any] = {}
+    if search and search.strip():
+        escaped = safe_regex(search.strip())
+        query["$or"] = [
+            {"nombre":   {"$regex": escaped, "$options": "i"}},
+            {"apellido": {"$regex": escaped, "$options": "i"}},
+            {"telefono": {"$regex": escaped, "$options": "i"}},
+        ]
+    total = await db.patients.count_documents(query)
+    patients = await db.patients.find(query, {"_id": 0}).skip(skip).limit(limit).to_list(None)
+    # Añadir total en header para que el frontend pueda paginar
+    # (FastAPI no soporta headers en response_model directo, usamos lista simple)
+    return patients
 
 
 @router.post("", response_model=Patient)

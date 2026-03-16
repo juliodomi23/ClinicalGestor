@@ -52,6 +52,11 @@ FIRST_ADMIN_EMAIL    = os.environ.get('FIRST_ADMIN_EMAIL')
 FIRST_ADMIN_PASSWORD = os.environ.get('FIRST_ADMIN_PASSWORD')
 FIRST_ADMIN_NAME     = os.environ.get('FIRST_ADMIN_NAME', 'Administrador')
 
+# ── Notificaciones (n8n trigger) ─────────────────────────────────────────────
+# URL del workflow de n8n que envía WhatsApp/email al paciente.
+# Si está vacía, las notificaciones quedan desactivadas.
+NOTIFICATION_WEBHOOK_URL = os.environ.get('NOTIFICATION_WEBHOOK_URL', '')
+
 # ── CORS ──────────────────────────────────────────────────────────────────────
 CORS_ORIGINS = [
     o.strip()

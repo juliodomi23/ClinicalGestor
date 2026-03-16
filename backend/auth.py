@@ -7,7 +7,7 @@ from datetime import datetime, timezone, timedelta
 
 import bcrypt
 import jwt
-from fastapi import Depends, HTTPException, Query
+from fastapi import Depends, HTTPException, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from config import JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRATION_HOURS, WEBHOOK_API_KEY
@@ -77,11 +77,11 @@ def _verify_key_safe(api_key: str) -> bool:
     return hmac.compare_digest(api_key.encode(), WEBHOOK_API_KEY.encode())
 
 
-def verify_webhook_key(api_key: str = Query(..., alias="api_key")) -> bool:
-    if not _verify_key_safe(api_key):
+def verify_webhook_key(x_api_key: str = Header(..., alias="X-API-Key")) -> bool:
+    if not _verify_key_safe(x_api_key):
         logger.warning("Intento de acceso webhook con API key inválida")
         raise HTTPException(status_code=401, detail="API key inválida")
-    if not webhook_limiter.is_allowed(api_key):
+    if not webhook_limiter.is_allowed(x_api_key):
         raise HTTPException(
             status_code=429, detail="Límite de peticiones excedido. Intenta en un minuto."
         )

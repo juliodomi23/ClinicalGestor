@@ -10,6 +10,8 @@ import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '../components/ui/sheet';
+import { ConfirmModal } from '../components/ConfirmModal';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../components/ui/command';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Calendar } from '../components/ui/calendar';
@@ -19,7 +21,8 @@ import { APPOINTMENT_STATES } from '../utils/mockData';
 import {
   Clock, AlertTriangle, User, Plus,
   ChevronLeft, ChevronRight, CalendarIcon,
-  GripVertical, Trash2, XCircle,
+  GripVertical, Trash2, XCircle, Pencil,
+  ChevronsUpDown, Check,
 } from 'lucide-react';
 import {
   format, addDays, subDays,
@@ -29,7 +32,7 @@ import {
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+import { API } from '@/lib/api';
 
 // ── Constantes de layout del grid ─────────────────────────────────────────────
 const PX_PER_HOUR = 64;   // px por hora → 1 min = 64/60 ≈ 1.07 px
@@ -143,10 +146,16 @@ export const CalendarPage = () => {
   // ── Sheet detalles ────────────────────────────────────────────────────────
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [sheetOpen,           setSheetOpen]           = useState(false);
+  const [confirmAction,       setConfirmAction]       = useState(null); // { type: 'cancel'|'delete', apt }
+  const [isEditMode,          setIsEditMode]          = useState(false);
+  const [editData,            setEditData]            = useState(null);
+  const [calendarEditOpen,    setCalendarEditOpen]    = useState(false);
 
   // ── Dialog nueva cita ─────────────────────────────────────────────────────
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [isCreateOpen,      setIsCreateOpen]      = useState(false);
+  const [calendarOpen,      setCalendarOpen]       = useState(false);
+  const [patientComboOpen,  setPatientComboOpen]  = useState(false);
+  const [patientSearch,     setPatientSearch]     = useState('');
   const [newApt, setNewApt] = useState({
     paciente_id: '',
     doctor_id:   '',
@@ -238,29 +247,121 @@ export const CalendarPage = () => {
     return appointments.filter(a => a.fecha === dateStr);
   };
 
+  /** Pacientes filtrados para el combobox (top 20, busca nombre + teléfono) */
+  const filteredPatients = useMemo(() => {
+    if (!patientSearch.trim()) return patients.slice(0, 20);
+    const q = patientSearch.toLowerCase();
+    return patients
+      .filter(p =>
+        `${p.nombre} ${p.apellido}`.toLowerCase().includes(q) ||
+        (p.telefono || '').includes(q)
+      )
+      .slice(0, 20);
+  }, [patients, patientSearch]);
+
+  /**
+   * Detecta si el slot (doctor + fecha + hora_inicio + duracion) solapa
+   * con una cita existente del MISMO doctor.
+   * Cada doctor tiene su propia agenda — no hay conflicto entre doctores distintos.
+   */
+  const conflictCheck = useMemo(() => {
+    if (!newApt.doctor_id || !newApt.fecha || !newApt.hora_inicio) return null;
+    const newStart = timeToMin(newApt.hora_inicio);
+    const newEnd   = newStart + newApt.duracion;
+    return appointments.find(apt => {
+      if (apt.doctor_id !== newApt.doctor_id) return false;
+      if (apt.fecha     !== newApt.fecha)     return false;
+      if (apt.estado    === 'cancelada')      return false;
+      const aptStart = timeToMin(apt.hora_inicio);
+      const aptEnd   = timeToMin(apt.hora_fin);
+      return newStart < aptEnd && newEnd > aptStart; // solapamiento real de rangos
+    }) || null;
+  }, [newApt.doctor_id, newApt.fecha, newApt.hora_inicio, newApt.duracion, appointments]);
+
+  /** Conflicto para el formulario de edición (excluye la cita que se está editando) */
+  const editConflictCheck = useMemo(() => {
+    if (!editData || !selectedAppointment) return null;
+    if (!editData.doctor_id || !editData.fecha || !editData.hora_inicio) return null;
+    const newStart = timeToMin(editData.hora_inicio);
+    const newEnd   = newStart + editData.duracion;
+    return appointments.find(apt => {
+      if (apt.id        === selectedAppointment.id) return false; // excluir la cita actual
+      if (apt.doctor_id !== editData.doctor_id)     return false;
+      if (apt.fecha     !== editData.fecha)         return false;
+      if (apt.estado    === 'cancelada')            return false;
+      const aptStart = timeToMin(apt.hora_inicio);
+      const aptEnd   = timeToMin(apt.hora_fin);
+      return newStart < aptEnd && newEnd > aptStart;
+    }) || null;
+  }, [editData, selectedAppointment, appointments]);
+
   // ── Handlers de cita ──────────────────────────────────────────────────────
-  const handleAppointmentClick = (apt) => { setSelectedAppointment(apt); setSheetOpen(true); };
+  const handleAppointmentClick = (apt) => {
+    setSelectedAppointment(apt);
+    setIsEditMode(false);
+    setSheetOpen(true);
+  };
+
+  const handleOpenEdit = () => {
+    const dur = calcDuration(selectedAppointment.hora_inicio, selectedAppointment.hora_fin);
+    setEditData({
+      doctor_id:   selectedAppointment.doctor_id,
+      fecha:       selectedAppointment.fecha,
+      hora_inicio: selectedAppointment.hora_inicio,
+      duracion:    dur > 0 ? dur : clinicConfig.slot_duration,
+      motivo:      selectedAppointment.motivo,
+      notas:       selectedAppointment.notas || '',
+      estado:      selectedAppointment.estado,
+    });
+    setIsEditMode(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editData.motivo.trim()) { toast.error('El motivo es requerido'); return; }
+    const hora_fin = calcEndTime(editData.hora_inicio, editData.duracion);
+    try {
+      const res = await axios.put(`${API}/appointments/${selectedAppointment.id}`, {
+        paciente_id: selectedAppointment.paciente_id,
+        doctor_id:   editData.doctor_id,
+        fecha:       editData.fecha,
+        hora_inicio: editData.hora_inicio,
+        hora_fin,
+        motivo:      editData.motivo,
+        notas:       editData.notas,
+        estado:      editData.estado,
+      });
+      setAppointments(prev => prev.map(a => a.id === selectedAppointment.id ? res.data : a));
+      setSelectedAppointment(res.data);
+      setIsEditMode(false);
+      toast.success('Cita actualizada');
+    } catch (err) {
+      const d = err.response?.data?.detail;
+      toast.error(Array.isArray(d) ? d.map(e => e.msg).join(', ') : (d || 'Error al actualizar'));
+    }
+  };
 
   const handleViewPatient = (apt) => { setSheetOpen(false); navigate(`/patients/${apt.paciente_id}`); };
 
-  const handleCancelAppointment = async (apt) => {
-    if (!window.confirm(`¿Cancelar la cita de ${apt.paciente_nombre}?`)) return;
-    try {
-      await axios.put(`${API}/appointments/${apt.id}/status`, null, { params: { estado: 'cancelada' } });
-      setAppointments(prev => prev.map(a => a.id === apt.id ? { ...a, estado: 'cancelada' } : a));
-      setSelectedAppointment(prev => ({ ...prev, estado: 'cancelada' }));
-      toast.success('Cita cancelada');
-    } catch { toast.error('Error al cancelar la cita'); }
-  };
+  const handleCancelAppointment = (apt) => setConfirmAction({ type: 'cancel', apt });
+  const handleDeleteAppointment = (apt) => setConfirmAction({ type: 'delete', apt });
 
-  const handleDeleteAppointment = async (apt) => {
-    if (!window.confirm(`¿Eliminar permanentemente la cita de ${apt.paciente_nombre}?`)) return;
+  const executeConfirmAction = async () => {
+    if (!confirmAction) return;
+    const { type, apt } = confirmAction;
+    setConfirmAction(null);
     try {
-      await axios.delete(`${API}/appointments/${apt.id}`);
-      setAppointments(prev => prev.filter(a => a.id !== apt.id));
-      setSheetOpen(false);
-      toast.success('Cita eliminada');
-    } catch { toast.error('Error al eliminar la cita'); }
+      if (type === 'cancel') {
+        await axios.put(`${API}/appointments/${apt.id}/status`, null, { params: { estado: 'cancelada' } });
+        setAppointments(prev => prev.map(a => a.id === apt.id ? { ...a, estado: 'cancelada' } : a));
+        setSelectedAppointment(prev => ({ ...prev, estado: 'cancelada' }));
+        toast.success('Cita cancelada');
+      } else {
+        await axios.delete(`${API}/appointments/${apt.id}`);
+        setAppointments(prev => prev.filter(a => a.id !== apt.id));
+        setSheetOpen(false);
+        toast.success('Cita eliminada');
+      }
+    } catch { toast.error(type === 'cancel' ? 'Error al cancelar la cita' : 'Error al eliminar la cita'); }
   };
 
   const handleCreateAppointment = async () => {
@@ -392,14 +493,14 @@ export const CalendarPage = () => {
         const top = (h - clinicConfig.work_start) * PX_PER_HOUR;
         return (
           <div key={h}>
-            {/* Línea de hora — sólida */}
+            {/* Línea de hora — sólida y visible */}
             <div
-              className="absolute w-full border-t border-border/60"
+              className="absolute w-full border-t border-slate-300 dark:border-slate-600"
               style={{ top }}
             />
-            {/* Línea de media hora — punteada más suave */}
+            {/* Línea de media hora — sólida pero más suave */}
             <div
-              className="absolute w-full border-t border-dashed border-border/30"
+              className="absolute w-full border-t border-slate-200 dark:border-slate-700"
               style={{ top: top + PX_PER_HOUR / 2 }}
             />
           </div>
@@ -408,16 +509,25 @@ export const CalendarPage = () => {
     </>
   );
 
-  /** Columna de etiquetas horarias */
+  /** Columna de etiquetas horarias — cada 30 min */
   const TimeLabels = () => (
-    <div className="relative flex-shrink-0 w-12 select-none" style={{ height: GRID_HEIGHT }}>
+    <div className="relative flex-shrink-0 w-16 select-none" style={{ height: GRID_HEIGHT }}>
       {HOURS.map((h) => (
-        <div
-          key={h}
-          className="absolute right-2 text-[10px] font-medium text-muted-foreground/70 leading-none"
-          style={{ top: (h - clinicConfig.work_start) * PX_PER_HOUR - 6 }}
-        >
-          {h}:00
+        <div key={h}>
+          {/* Hora en punto — más prominente */}
+          <div
+            className="absolute right-2 text-[11px] font-semibold text-foreground/60 leading-none"
+            style={{ top: (h - clinicConfig.work_start) * PX_PER_HOUR - 6 }}
+          >
+            {h}:00
+          </div>
+          {/* Media hora — más sutil */}
+          <div
+            className="absolute right-2 text-[10px] font-normal text-muted-foreground/45 leading-none"
+            style={{ top: (h - clinicConfig.work_start) * PX_PER_HOUR + PX_PER_HOUR / 2 - 5 }}
+          >
+            {h}:30
+          </div>
         </div>
       ))}
     </div>
@@ -442,18 +552,18 @@ export const CalendarPage = () => {
     return <>{slots}</>;
   };
 
-  // ── Indicador de hora actual ──────────────────────────────────────────────
+  // ── Indicador de hora actual (línea roja) ────────────────────────────────
   const CurrentTimeLine = () => {
     const now = new Date();
-    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const nowMin   = now.getHours() * 60 + now.getMinutes();
     const startMin = clinicConfig.work_start * 60;
     const endMin   = clinicConfig.work_end   * 60;
     if (nowMin < startMin || nowMin > endMin) return null;
     const top = (nowMin - startMin) * (PX_PER_HOUR / 60);
     return (
       <div className="absolute w-full flex items-center pointer-events-none" style={{ top, zIndex: 20 }}>
-        <div className="w-2 h-2 rounded-full bg-rose-500 -ml-1 flex-shrink-0" />
-        <div className="flex-1 border-t-2 border-rose-500/70" />
+        <div className="w-2.5 h-2.5 rounded-full bg-rose-500 -ml-1.5 flex-shrink-0 shadow shadow-rose-500/50" />
+        <div className="flex-1 border-t-2 border-rose-500 opacity-80" />
       </div>
     );
   };
@@ -494,7 +604,7 @@ export const CalendarPage = () => {
     <div className="overflow-x-auto mt-2">
       <div className="min-w-[640px]">
         {/* Header de días — sticky */}
-        <div className="flex gap-0 mb-0 pl-12 border-b border-border/40 pb-2">
+        <div className="flex gap-0 mb-0 pl-16 border-b border-border/40 pb-2">
           {weekDaysArray.map(day => (
             <div
               key={day.toISOString()}
@@ -647,19 +757,56 @@ export const CalendarPage = () => {
               </DialogHeader>
               <div className="space-y-4 mt-4">
 
-                {/* Paciente */}
+                {/* Paciente — combobox con búsqueda */}
                 <div className="space-y-2">
                   <Label>Paciente *</Label>
-                  <Select value={newApt.paciente_id} onValueChange={v => setNewApt({ ...newApt, paciente_id: v })}>
-                    <SelectTrigger data-testid="apt-patient-select">
-                      <SelectValue placeholder="Seleccionar paciente" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {patients.map(p => (
-                        <SelectItem key={p.id} value={p.id}>{p.nombre} {p.apellido}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Popover open={patientComboOpen} onOpenChange={setPatientComboOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        data-testid="apt-patient-select"
+                        className="w-full justify-between font-normal"
+                      >
+                        {newApt.paciente_id
+                          ? (() => { const p = patients.find(x => x.id === newApt.paciente_id); return p ? `${p.nombre} ${p.apellido}` : 'Seleccionar paciente'; })()
+                          : <span className="text-muted-foreground">Buscar paciente…</span>
+                        }
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                      <Command shouldFilter={false}>
+                        <CommandInput
+                          placeholder="Nombre o teléfono…"
+                          value={patientSearch}
+                          onValueChange={setPatientSearch}
+                        />
+                        <CommandList>
+                          <CommandEmpty>No se encontraron pacientes.</CommandEmpty>
+                          <CommandGroup>
+                            {filteredPatients.map(p => (
+                              <CommandItem
+                                key={p.id}
+                                value={p.id}
+                                onSelect={() => {
+                                  setNewApt({ ...newApt, paciente_id: p.id });
+                                  setPatientComboOpen(false);
+                                  setPatientSearch('');
+                                }}
+                              >
+                                <Check className={cn('mr-2 h-4 w-4 flex-shrink-0', newApt.paciente_id === p.id ? 'opacity-100' : 'opacity-0')} />
+                                <div className="min-w-0">
+                                  <div className="font-medium truncate">{p.nombre} {p.apellido}</div>
+                                  <div className="text-xs text-muted-foreground">{p.telefono}</div>
+                                </div>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 </div>
 
                 {/* Doctor */}
@@ -753,6 +900,19 @@ export const CalendarPage = () => {
                   <span className="text-muted-foreground ml-auto">{newApt.duracion} min</span>
                 </div>
 
+                {/* Alerta de conflicto */}
+                {conflictCheck && (
+                  <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800">
+                    <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                    <div className="text-sm">
+                      <p className="font-semibold text-amber-800 dark:text-amber-300">Horario ocupado</p>
+                      <p className="text-amber-700 dark:text-amber-400 text-xs mt-0.5">
+                        {conflictCheck.paciente_nombre} ya tiene cita de {conflictCheck.hora_inicio}–{conflictCheck.hora_fin}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Motivo */}
                 <div className="space-y-2">
                   <Label>Motivo *</Label>
@@ -777,7 +937,12 @@ export const CalendarPage = () => {
 
                 <div className="flex gap-2 pt-2">
                   <Button variant="outline" className="flex-1" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
-                  <Button className="flex-1" onClick={handleCreateAppointment} data-testid="save-appointment-btn">
+                  <Button
+                    className="flex-1"
+                    onClick={handleCreateAppointment}
+                    disabled={!!conflictCheck}
+                    data-testid="save-appointment-btn"
+                  >
                     Agendar Cita
                   </Button>
                 </div>
@@ -817,15 +982,39 @@ export const CalendarPage = () => {
                 <Button variant="outline" size="icon" onClick={() => navigateCalendar('next')} data-testid="calendar-next">
                   <ChevronRight className="h-4 w-4" />
                 </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentDate(new Date())}
+                  className="text-xs px-3"
+                  data-testid="calendar-today"
+                >
+                  Hoy
+                </Button>
               </div>
             </div>
 
             {/* Leyenda */}
-            <div className="flex flex-wrap items-center gap-2 pt-2">
-              {Object.entries(APPOINTMENT_STATES).map(([key, { label, color }]) => (
-                <Badge key={key} variant="outline" className={cn('text-xs', color)}>{label}</Badge>
-              ))}
-              <span className="flex items-center gap-1 text-[11px] text-muted-foreground ml-2">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-2">
+              {/* Estados */}
+              <div className="flex flex-wrap items-center gap-2">
+                {Object.entries(APPOINTMENT_STATES).map(([key, { label, color }]) => (
+                  <Badge key={key} variant="outline" className={cn('text-xs', color)}>{label}</Badge>
+                ))}
+              </div>
+              {/* Doctores */}
+              {doctors.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] text-muted-foreground">Doctores:</span>
+                  {doctors.map(doc => (
+                    <span key={doc.id} className="flex items-center gap-1 text-[11px]">
+                      <span className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: doc.color || '#0ea5e9' }} />
+                      {doc.nombre}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
                 <GripVertical className="h-3 w-3" /> Arrastra para mover
               </span>
             </div>
@@ -838,22 +1027,21 @@ export const CalendarPage = () => {
           </CardContent>
         </Card>
 
-        {/* Sheet detalles de cita */}
-        <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-          <SheetContent className="w-full sm:max-w-md">
+        {/* Sheet detalles / edición de cita */}
+        <Sheet open={sheetOpen} onOpenChange={(open) => { setSheetOpen(open); if (!open) setIsEditMode(false); }}>
+          <SheetContent className="w-full sm:max-w-md overflow-y-auto">
             <SheetHeader>
-              <SheetTitle>Detalles de la Cita</SheetTitle>
+              <SheetTitle>{isEditMode ? 'Editar Cita' : 'Detalles de la Cita'}</SheetTitle>
             </SheetHeader>
-            {selectedAppointment && (
+
+            {selectedAppointment && !isEditMode && (
               <div className="mt-6 space-y-6">
                 <div className="space-y-4">
                   <h3 className="font-semibold text-lg">{selectedAppointment.paciente_nombre}</h3>
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 text-sm">
                       <Clock className="h-4 w-4 text-muted-foreground" />
-                      <span>
-                        {selectedAppointment.fecha} · {selectedAppointment.hora_inicio} – {selectedAppointment.hora_fin}
-                      </span>
+                      <span>{selectedAppointment.fecha} · {selectedAppointment.hora_inicio} – {selectedAppointment.hora_fin}</span>
                       <Badge variant="outline" className="text-[10px] ml-auto">
                         {calcDuration(selectedAppointment.hora_inicio, selectedAppointment.hora_fin)} min
                       </Badge>
@@ -867,6 +1055,12 @@ export const CalendarPage = () => {
                     <p className="text-sm text-muted-foreground">Motivo</p>
                     <p className="font-medium">{selectedAppointment.motivo}</p>
                   </div>
+                  {selectedAppointment.notas && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Notas</p>
+                      <p className="text-sm">{selectedAppointment.notas}</p>
+                    </div>
+                  )}
                   <Badge className={APPOINTMENT_STATES[selectedAppointment.estado]?.color}>
                     {APPOINTMENT_STATES[selectedAppointment.estado]?.label}
                   </Badge>
@@ -883,9 +1077,7 @@ export const CalendarPage = () => {
                         </div>
                         <ul className="space-y-1">
                           {patient.alertas_medicas.map((alerta, i) => (
-                            <li key={i} className="text-sm text-rose-700 dark:text-rose-300">
-                              · {alerta.descripcion}
-                            </li>
+                            <li key={i} className="text-sm text-rose-700 dark:text-rose-300">· {alerta.descripcion}</li>
                           ))}
                         </ul>
                       </div>
@@ -896,6 +1088,9 @@ export const CalendarPage = () => {
                 <div className="space-y-2">
                   <Button className="w-full" onClick={() => handleViewPatient(selectedAppointment)} data-testid="view-patient-btn">
                     <User className="h-4 w-4 mr-2" /> Ver Expediente Completo
+                  </Button>
+                  <Button variant="outline" className="w-full" onClick={handleOpenEdit}>
+                    <Pencil className="h-4 w-4 mr-2" /> Editar Cita
                   </Button>
                   {selectedAppointment.estado !== 'cancelada' && (
                     <Button
@@ -919,9 +1114,164 @@ export const CalendarPage = () => {
                 </div>
               </div>
             )}
+
+            {/* ── Formulario de edición ── */}
+            {selectedAppointment && isEditMode && editData && (
+              <div className="mt-6 space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Paciente: <span className="font-medium text-foreground">{selectedAppointment.paciente_nombre}</span>
+                </p>
+
+                {/* Doctor */}
+                <div className="space-y-2">
+                  <Label>Doctor</Label>
+                  <Select value={editData.doctor_id} onValueChange={v => setEditData({ ...editData, doctor_id: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {doctors.map(d => (
+                        <SelectItem key={d.id} value={d.id}>
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: d.color }} />
+                            {d.nombre}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Fecha */}
+                <div className="space-y-2">
+                  <Label>Fecha</Label>
+                  <Popover open={calendarEditOpen} onOpenChange={setCalendarEditOpen}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-full justify-start text-left font-normal">
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {editData.fecha ? format(new Date(editData.fecha), 'PPP', { locale: es }) : 'Seleccionar'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={editData.fecha ? new Date(editData.fecha) : undefined}
+                        onSelect={(date) => {
+                          if (date) { setEditData({ ...editData, fecha: format(date, 'yyyy-MM-dd') }); setCalendarEditOpen(false); }
+                        }}
+                        locale={es}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                {/* Hora + Duración */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Hora inicio</Label>
+                    <Select value={editData.hora_inicio} onValueChange={v => setEditData({ ...editData, hora_inicio: v })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {TIME_SLOTS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Duración</Label>
+                    <Select value={editData.duracion.toString()} onValueChange={v => setEditData({ ...editData, duracion: parseInt(v) })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {DURATION_OPTIONS.map(opt => (
+                          <SelectItem key={opt.value} value={opt.value.toString()}>{opt.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Preview hora fin */}
+                <div className="flex items-center gap-2 text-sm bg-muted/50 px-3 py-2 rounded-lg">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-muted-foreground">Termina:</span>
+                  <span className="font-semibold">{calcEndTime(editData.hora_inicio, editData.duracion)}</span>
+                  <span className="text-muted-foreground ml-auto">{editData.duracion} min</span>
+                </div>
+
+                {/* Alerta de conflicto en edición */}
+                {editConflictCheck && (
+                  <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800">
+                    <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                    <div className="text-sm">
+                      <p className="font-semibold text-amber-800 dark:text-amber-300">Horario ocupado</p>
+                      <p className="text-amber-700 dark:text-amber-400 text-xs mt-0.5">
+                        {editConflictCheck.paciente_nombre} ya tiene cita de {editConflictCheck.hora_inicio}–{editConflictCheck.hora_fin}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Estado */}
+                <div className="space-y-2">
+                  <Label>Estado</Label>
+                  <Select value={editData.estado} onValueChange={v => setEditData({ ...editData, estado: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(APPOINTMENT_STATES).map(([key, { label }]) => (
+                        <SelectItem key={key} value={key}>{label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Motivo */}
+                <div className="space-y-2">
+                  <Label>Motivo *</Label>
+                  <Input
+                    value={editData.motivo}
+                    onChange={e => setEditData({ ...editData, motivo: e.target.value })}
+                    placeholder="Motivo de la consulta"
+                  />
+                </div>
+
+                {/* Notas */}
+                <div className="space-y-2">
+                  <Label>Notas</Label>
+                  <Textarea
+                    value={editData.notas}
+                    onChange={e => setEditData({ ...editData, notas: e.target.value })}
+                    rows={2}
+                    placeholder="Notas adicionales..."
+                  />
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <Button variant="outline" className="flex-1" onClick={() => setIsEditMode(false)}>
+                    Cancelar
+                  </Button>
+                  <Button
+                    className="flex-1"
+                    onClick={handleSaveEdit}
+                    disabled={!!editConflictCheck}
+                  >
+                    Guardar Cambios
+                  </Button>
+                </div>
+              </div>
+            )}
           </SheetContent>
         </Sheet>
       </div>
+
+      <ConfirmModal
+        open={!!confirmAction}
+        onOpenChange={open => !open && setConfirmAction(null)}
+        title={confirmAction?.type === 'cancel' ? '¿Cancelar cita?' : '¿Eliminar cita?'}
+        description={confirmAction?.type === 'cancel'
+          ? `Se cancelará la cita de ${confirmAction?.apt?.paciente_nombre}. El paciente podrá ser reagendado.`
+          : `Se eliminará permanentemente la cita de ${confirmAction?.apt?.paciente_nombre}. Esta acción no se puede deshacer.`}
+        variant={confirmAction?.type === 'cancel' ? 'warning' : 'danger'}
+        confirmLabel={confirmAction?.type === 'cancel' ? 'Sí, cancelar' : 'Sí, eliminar'}
+        cancelLabel="No, mantener"
+        onConfirm={executeConfirmAction}
+      />
     </Layout>
   );
 };

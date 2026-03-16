@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from auth import get_current_user
 from database import db
 from models import AppointmentCreate, Appointment, MessageResponse, validate_date
+from notifications import notify
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/appointments", tags=["Citas"])
@@ -72,7 +73,11 @@ async def create_appointment(
     now     = datetime.now(timezone.utc).isoformat()
     apt_doc = {"id": apt_id, **apt_data.model_dump(), "created_at": now}
     await db.appointments.insert_one(apt_doc)
-    return Appointment(**(await enrich_appointments([apt_doc]))[0])
+    enriched = (await enrich_appointments([apt_doc]))[0]
+    patient = await db.patients.find_one({"id": apt_data.paciente_id}, {"_id": 0}) or {}
+    doctor  = await db.doctors.find_one({"id": apt_data.doctor_id}, {"_id": 0}) or {}
+    notify("cita_creada", apt_doc, patient, doctor)
+    return Appointment(**enriched)
 
 
 @router.put("/{apt_id}/status", response_model=MessageResponse)
@@ -84,9 +89,16 @@ async def update_appointment_status(
     valid_states = ["confirmada", "en_sala", "atendido", "cancelada"]
     if estado not in valid_states:
         raise HTTPException(400, f"Estado inválido. Valores permitidos: {valid_states}")
-    result = await db.appointments.update_one({"id": apt_id}, {"$set": {"estado": estado}})
-    if result.matched_count == 0:
+    apt = await db.appointments.find_one({"id": apt_id}, {"_id": 0})
+    if not apt:
         raise HTTPException(404, "Cita no encontrada")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.appointments.update_one({"id": apt_id}, {"$set": {"estado": estado, "updated_at": now}})
+    if estado == "cancelada":
+        patient = await db.patients.find_one({"id": apt["paciente_id"]}, {"_id": 0}) or {}
+        doctor  = await db.doctors.find_one({"id": apt["doctor_id"]}, {"_id": 0}) or {}
+        apt["estado"] = estado
+        notify("cita_cancelada", apt, patient, doctor)
     return MessageResponse(message="Estado actualizado")
 
 
@@ -97,7 +109,7 @@ async def update_appointment(
     current_user: dict = Depends(get_current_user),
 ):
     result = await db.appointments.update_one(
-        {"id": apt_id}, {"$set": apt_data.model_dump()}
+        {"id": apt_id}, {"$set": {**apt_data.model_dump(), "updated_at": datetime.now(timezone.utc).isoformat()}}
     )
     if result.matched_count == 0:
         raise HTTPException(404, "Cita no encontrada")

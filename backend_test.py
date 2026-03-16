@@ -193,28 +193,96 @@ class ClinicAPITester:
             return False
 
     def test_webhook_endpoints(self):
-        """Test n8n webhook endpoints"""
-        webhook_api_key = "dentu-n8n-webhook-key-2024"
-        
-        # Test webhook doctors endpoint
-        success, status, data = self.make_request('GET', f'webhook/doctors?api_key={webhook_api_key}', expected_status=200)
-        
-        if success and status == 200 and data:
-            self.log_test("Webhook Get Doctors", True, f"Found {len(data.get('doctors', [])) if isinstance(data, dict) else 0} doctors")
-        else:
-            self.log_test("Webhook Get Doctors", False, f"Status: {status}")
+        """Test n8n webhook CRUD endpoints (auth via X-API-Key header)"""
+        WEBHOOK_KEY = "dentu-n8n-webhook-key-2024"
+        wh = {"X-API-Key": WEBHOOK_KEY}
+        test_date = datetime.now().strftime("%Y-%m-%d")
+
+        # ── Doctores ──────────────────────────────────────────────────────────
+        url = f"{self.base_url}/webhook/doctores"
+        r = self.session.get(url, headers=wh)
+        ok = r.status_code == 200 and "doctores" in r.json()
+        self.log_test("Webhook GET /doctores", ok, f"status={r.status_code}")
+        if not ok:
             return False
-        
-        # Test webhook availability endpoint
-        test_date = "2026-03-12"
-        success, status, data = self.make_request('GET', f'webhook/availability?api_key={webhook_api_key}&fecha={test_date}', expected_status=200)
-        
-        if success and status == 200 and data:
-            self.log_test("Webhook Get Availability", True, f"Date: {test_date}, Slots: {data.get('slots_disponibles', 0) if isinstance(data, dict) else 0}")
-        else:
-            self.log_test("Webhook Get Availability", False, f"Status: {status}")
-            return False
-        
+        doctors = r.json()["doctores"]
+
+        # ── Disponibilidad ────────────────────────────────────────────────────
+        url = f"{self.base_url}/webhook/citas/disponibilidad?fecha={test_date}"
+        r = self.session.get(url, headers=wh)
+        ok = r.status_code == 200 and "disponibilidad" in r.json()
+        self.log_test("Webhook GET /citas/disponibilidad", ok, f"slots={r.json().get('slots_disponibles', '?')}")
+
+        # ── Buscar paciente (puede no haber ninguno) ───────────────────────────
+        url = f"{self.base_url}/webhook/pacientes/buscar?nombre=test"
+        r = self.session.get(url, headers=wh)
+        self.log_test("Webhook GET /pacientes/buscar", r.status_code == 200, f"status={r.status_code}")
+
+        # ── Registrar paciente ────────────────────────────────────────────────
+        test_phone = f"+521{int(datetime.now().timestamp()) % 10**10:010d}"
+        url = f"{self.base_url}/webhook/pacientes/registrar"
+        payload = {
+            "nombre": "Test", "apellido": "Webhook",
+            "telefono": test_phone, "fecha_nacimiento": "1990-01-01",
+        }
+        r = self.session.post(url, json=payload, headers=wh)
+        ok = r.status_code == 200 and "paciente" in r.json()
+        self.log_test("Webhook POST /pacientes/registrar", ok, f"status={r.status_code}")
+        if not ok or not doctors:
+            return True  # no hay doctores con qué agendar, tests básicos OK
+
+        patient_id = r.json()["paciente"]["id"]
+        doctor_id  = doctors[0]["id"]
+
+        # ── Agendar cita ──────────────────────────────────────────────────────
+        url = f"{self.base_url}/webhook/citas/agendar"
+        payload = {
+            "paciente_id": patient_id,
+            "doctor_id": doctor_id,
+            "fecha": test_date,
+            "hora_inicio": "07:00",
+            "hora_fin": "07:30",
+            "motivo": "Test webhook",
+            "notas": "",
+        }
+        r = self.session.post(url, json=payload, headers=wh)
+        ok = r.status_code in (200, 409)  # 409 si hay conflicto (test idempotente)
+        self.log_test("Webhook POST /citas/agendar", ok, f"status={r.status_code}")
+        if r.status_code != 200:
+            return True
+
+        cita_id = r.json()["cita_id"]
+
+        # ── Obtener cita ──────────────────────────────────────────────────────
+        url = f"{self.base_url}/webhook/citas/{cita_id}"
+        r = self.session.get(url, headers=wh)
+        self.log_test("Webhook GET /citas/{id}", r.status_code == 200, f"status={r.status_code}")
+
+        # ── Consultar citas ───────────────────────────────────────────────────
+        url = f"{self.base_url}/webhook/citas/consultar?fecha={test_date}&doctor_id={doctor_id}"
+        r = self.session.get(url, headers=wh)
+        ok = r.status_code == 200 and "citas" in r.json()
+        self.log_test("Webhook GET /citas/consultar", ok, f"total={r.json().get('total','?')}")
+
+        # ── Actualizar estado ─────────────────────────────────────────────────
+        url = f"{self.base_url}/webhook/citas/{cita_id}/estado?estado=en_sala"
+        r = self.session.put(url, headers=wh)
+        self.log_test("Webhook PUT /citas/{id}/estado", r.status_code == 200, f"status={r.status_code}")
+
+        # ── Reagendar ─────────────────────────────────────────────────────────
+        url = f"{self.base_url}/webhook/citas/{cita_id}/reagendar?nueva_fecha={test_date}&nueva_hora=07:00"
+        r = self.session.put(url, headers=wh)
+        self.log_test("Webhook PUT /citas/{id}/reagendar", r.status_code in (200, 409), f"status={r.status_code}")
+
+        # ── Cancelar ──────────────────────────────────────────────────────────
+        url = f"{self.base_url}/webhook/citas/{cita_id}/cancelar"
+        r = self.session.put(url, headers=wh)
+        self.log_test("Webhook PUT /citas/{id}/cancelar", r.status_code == 200, f"status={r.status_code}")
+
+        # Verificar idempotencia: cancelar de nuevo no debe fallar
+        r2 = self.session.put(url, headers=wh)
+        self.log_test("Webhook cancelar idempotente", r2.status_code == 200, f"status={r2.status_code}")
+
         return True
     
     def test_patient_detail_flow(self):

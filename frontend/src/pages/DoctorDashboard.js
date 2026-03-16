@@ -1,34 +1,46 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Layout } from '../components/Layout';
 import { PatientCard } from '../components/PatientCard';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
+import { Badge } from '../components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
 import { APPOINTMENT_STATES } from '../utils/mockData';
+import { format, startOfWeek, addDays } from 'date-fns';
+import { es } from 'date-fns/locale';
 import {
   Clock,
   Users,
   CheckCircle2,
   AlertCircle,
-  Calendar
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+import { API } from '@/lib/api';
 
 export const DoctorDashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
 
   const [appointments, setAppointments] = useState([]);
+  const [weekAppointments, setWeekAppointments] = useState([]);
   const [patients, setPatients] = useState([]);
   const [doctorProfile, setDoctorProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [weekOffset, setWeekOffset] = useState(0); // 0 = esta semana, -1 = anterior, +1 = siguiente
 
   const today = new Date().toISOString().split('T')[0];
+
+  const weekDays = useMemo(() => {
+    const base = addDays(startOfWeek(new Date(), { weekStartsOn: 1 }), weekOffset * 7);
+    return Array.from({ length: 7 }, (_, i) => addDays(base, i));
+  }, [weekOffset]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -60,6 +72,24 @@ export const DoctorDashboard = () => {
 
     if (user) fetchData();
   }, [today, user]);
+
+  // Carga citas de la semana cada vez que cambia el offset o el perfil del doctor
+  useEffect(() => {
+    if (!doctorProfile) return;
+    const fetchWeek = async () => {
+      const fechaInicio = format(weekDays[0], 'yyyy-MM-dd');
+      const fechaFin    = format(weekDays[6], 'yyyy-MM-dd');
+      try {
+        const res = await axios.get(`${API}/appointments`, {
+          params: { doctor_id: doctorProfile.id, limit: 200 },
+        });
+        setWeekAppointments(
+          res.data.filter(a => a.fecha >= fechaInicio && a.fecha <= fechaFin)
+        );
+      } catch { /* silencioso */ }
+    };
+    fetchWeek();
+  }, [doctorProfile, weekDays]);
 
   const handleUpdateStatus = async (aptId, newStatus) => {
     try {
@@ -190,7 +220,7 @@ export const DoctorDashboard = () => {
         <Tabs defaultValue="all" className="w-full">
           <TabsList className="mb-4">
             <TabsTrigger value="all" data-testid="tab-all">
-              Todas ({appointments.length})
+              Hoy ({appointments.length})
             </TabsTrigger>
             <TabsTrigger value="pending" data-testid="tab-pending">
               Pendientes ({currentPending.length})
@@ -200,6 +230,9 @@ export const DoctorDashboard = () => {
             </TabsTrigger>
             <TabsTrigger value="completed" data-testid="tab-completed">
               Atendidos ({currentCompleted.length})
+            </TabsTrigger>
+            <TabsTrigger value="week" data-testid="tab-week">
+              Semana
             </TabsTrigger>
           </TabsList>
 
@@ -277,6 +310,69 @@ export const DoctorDashboard = () => {
                   <p>No has atendido pacientes hoy</p>
                 </div>
               )}
+            </div>
+          </TabsContent>
+
+          {/* ── Agenda semanal ─────────────────────────────────────────── */}
+          <TabsContent value="week">
+            <div className="space-y-3">
+              {/* Navegación de semana */}
+              <div className="flex items-center justify-between">
+                <Button variant="outline" size="icon" onClick={() => setWeekOffset(w => w - 1)}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-sm font-medium capitalize">
+                  {format(weekDays[0], "d 'de' MMMM", { locale: es })} – {format(weekDays[6], "d 'de' MMMM, yyyy", { locale: es })}
+                </span>
+                <div className="flex items-center gap-2">
+                  {weekOffset !== 0 && (
+                    <Button variant="ghost" size="sm" onClick={() => setWeekOffset(0)} className="text-xs">
+                      Esta semana
+                    </Button>
+                  )}
+                  <Button variant="outline" size="icon" onClick={() => setWeekOffset(w => w + 1)}>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Días de la semana */}
+              <div className="grid grid-cols-1 md:grid-cols-7 gap-2">
+                {weekDays.map(day => {
+                  const dateStr = format(day, 'yyyy-MM-dd');
+                  const isToday = dateStr === today;
+                  const dayApts = weekAppointments
+                    .filter(a => a.fecha === dateStr && a.estado !== 'cancelada')
+                    .sort((a, b) => a.hora_inicio.localeCompare(b.hora_inicio));
+                  return (
+                    <Card key={dateStr} className={`border-border/50 ${isToday ? 'ring-2 ring-primary/50' : ''}`}>
+                      <CardHeader className="p-2 pb-1">
+                        <p className={`text-xs font-semibold text-center capitalize ${isToday ? 'text-primary' : 'text-muted-foreground'}`}>
+                          {format(day, 'EEE d', { locale: es })}
+                        </p>
+                      </CardHeader>
+                      <CardContent className="p-2 pt-0 space-y-1 min-h-[80px]">
+                        {dayApts.length === 0 ? (
+                          <p className="text-[10px] text-muted-foreground text-center pt-2">Libre</p>
+                        ) : dayApts.map(apt => (
+                          <div
+                            key={apt.id}
+                            className="text-[10px] rounded px-1.5 py-1 bg-primary/10 border-l-2 border-primary leading-tight"
+                          >
+                            <p className="font-medium truncate">{apt.hora_inicio} {apt.paciente_nombre}</p>
+                            <p className="text-muted-foreground truncate">{apt.motivo}</p>
+                          </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+
+              {/* Resumen de la semana */}
+              <p className="text-xs text-muted-foreground text-right">
+                {weekAppointments.filter(a => a.estado !== 'cancelada').length} citas esta semana
+              </p>
             </div>
           </TabsContent>
         </Tabs>

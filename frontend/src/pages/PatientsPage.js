@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Layout } from '../components/Layout';
@@ -9,21 +9,25 @@ import { Badge } from '../components/ui/badge';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from '../components/ui/dialog';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '../components/ui/alert-dialog';
+import { ConfirmModal } from '../components/ConfirmModal';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { toast } from 'sonner';
-import { Search, Plus, Users, AlertTriangle, Pencil, X, Trash2 } from 'lucide-react';
+import { Search, Plus, Users, AlertTriangle, Pencil, X, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+import { API } from '@/lib/api';
 
 // Default avatar for patients without photos
 const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200&blur=20';
 
 export const PatientsPage = () => {
   const navigate = useNavigate();
-  const [searchTerm, setSearchTerm] = useState('');
-  const [patients, setPatients] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const PAGE_SIZE = 50;
+  const [searchTerm, setSearchTerm]     = useState('');
+  const [searchInput, setSearchInput]   = useState('');
+  const [patients, setPatients]         = useState([]);
+  const [loading, setLoading]           = useState(true);
+  const [page, setPage]                 = useState(0); // 0-based
+  const [hasMore, setHasMore]           = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPatient, setEditingPatient] = useState(null);
 
@@ -31,20 +35,32 @@ export const PatientsPage = () => {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [patientToDelete, setPatientToDelete] = useState(null);
 
-  useEffect(() => {
-    fetchPatients();
-  }, []);
-
-  const fetchPatients = async () => {
+  const fetchPatients = useCallback(async (currentPage = 0, search = '') => {
+    setLoading(true);
     try {
-      const res = await axios.get(`${API}/patients`, { params: { limit: 200 } });
+      const res = await axios.get(`${API}/patients`, {
+        params: { skip: currentPage * PAGE_SIZE, limit: PAGE_SIZE, search: search || undefined },
+      });
       setPatients(res.data);
-    } catch (err) {
+      setHasMore(res.data.length === PAGE_SIZE);
+    } catch {
       toast.error('Error al cargar pacientes');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => { fetchPatients(0, ''); }, [fetchPatients]);
+
+  // Búsqueda con debounce de 400ms
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchTerm(searchInput);
+      setPage(0);
+      fetchPatients(0, searchInput);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchInput, fetchPatients]);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -167,12 +183,8 @@ export const PatientsPage = () => {
     return `${nombre?.[0] || ''}${apellido?.[0] || ''}`.toUpperCase();
   };
 
-  const filteredPatients = patients.filter(p => 
-    `${p.nombre} ${p.apellido}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.telefono.includes(searchTerm) ||
-    p.email?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
+  // La búsqueda es server-side — patients ya viene filtrado
+  const filteredPatients = patients;
   const patientsWithAlerts = patients.filter(p => p.alertas_medicas?.length > 0);
 
   return (
@@ -363,8 +375,8 @@ export const PatientsPage = () => {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Buscar paciente..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
                   className="pl-9"
                   data-testid="search-patients"
                 />
@@ -378,10 +390,10 @@ export const PatientsPage = () => {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg font-semibold">
-                {searchTerm ? `Resultados: ${filteredPatients.length}` : 'Todos los Pacientes'}
+                {searchInput ? `Resultados: ${filteredPatients.length}` : `Pacientes (pág. ${page + 1})`}
               </CardTitle>
-              {searchTerm && (
-                <Button variant="ghost" size="sm" onClick={() => setSearchTerm('')}>
+              {searchInput && (
+                <Button variant="ghost" size="sm" onClick={() => setSearchInput('')}>
                   Limpiar búsqueda
                 </Button>
               )}
@@ -460,41 +472,56 @@ export const PatientsPage = () => {
               <div className="text-center py-12 text-muted-foreground">
                 <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
                 <p>No se encontraron pacientes</p>
-                {searchTerm && (
+                {searchInput && (
                   <p className="text-sm mt-1">Intenta con otro término de búsqueda</p>
                 )}
               </div>
             )}
           </CardContent>
-        </Card>
-        
-        {/* Delete Confirmation Dialog */}
-        <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>¿Eliminar paciente?</AlertDialogTitle>
-              <AlertDialogDescription>
-                {patientToDelete && (
-                  <>
-                    ¿Estás seguro que deseas eliminar a <strong>{patientToDelete.nombre} {patientToDelete.apellido}</strong>?
-                    <br /><br />
-                    Esta acción eliminará también todo su historial clínico, odontograma y archivos asociados. Esta acción no se puede deshacer.
-                  </>
-                )}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-              <AlertDialogAction 
-                onClick={handleConfirmDelete}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                data-testid="confirm-delete-patient"
+
+          {/* Paginación */}
+          {!searchInput && (page > 0 || hasMore) && (
+            <div className="flex items-center justify-center gap-3 p-4 border-t border-border/50">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page === 0}
+                onClick={() => {
+                  const newPage = page - 1;
+                  setPage(newPage);
+                  fetchPatients(newPage, searchInput);
+                }}
               >
-                Sí, eliminar paciente
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+                <ChevronLeft className="h-4 w-4 mr-1" /> Anterior
+              </Button>
+              <span className="text-sm text-muted-foreground">Página {page + 1}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!hasMore}
+                onClick={() => {
+                  const newPage = page + 1;
+                  setPage(newPage);
+                  fetchPatients(newPage, searchInput);
+                }}
+              >
+                Siguiente <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
+          )}
+        </Card>
+
+        <ConfirmModal
+          open={deleteConfirmOpen}
+          onOpenChange={setDeleteConfirmOpen}
+          title="¿Eliminar paciente?"
+          description={patientToDelete
+            ? `Se eliminará a ${patientToDelete.nombre} ${patientToDelete.apellido} junto con su historial clínico, odontograma y archivos. Esta acción no se puede deshacer.`
+            : ''}
+          variant="danger"
+          confirmLabel="Sí, eliminar"
+          onConfirm={handleConfirmDelete}
+        />
       </div>
     </Layout>
   );

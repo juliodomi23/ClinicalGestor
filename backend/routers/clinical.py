@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timezone
 from typing import List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from auth import get_current_user
 from database import db
@@ -83,3 +83,17 @@ async def create_patient_file(
     }
     await db.archivos_medicos.insert_one(archivo_doc)
     return ArchivoMedico(**archivo_doc)
+
+
+@router.delete("/patients/{patient_id}/archivos/{archivo_id}")
+async def delete_patient_file(
+    patient_id: str,
+    archivo_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    result = await db.archivos_medicos.delete_one(
+        {"id": archivo_id, "paciente_id": patient_id}
+    )
+    if result.deleted_count == 0:
+        raise HTTPException(404, "Archivo no encontrado")
+    return {"mensaje": "Archivo eliminado"}
