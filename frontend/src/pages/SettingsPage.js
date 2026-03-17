@@ -310,6 +310,16 @@ const UsersSection = ({ currentUser }) => {
         )}
       </CardContent>
     </Card>
+
+    <ConfirmModal
+      open={!!deleteUser}
+      onOpenChange={open => !open && setDeleteUser(null)}
+      title="¿Eliminar usuario?"
+      description={`Se eliminará permanentemente la cuenta de "${deleteUser?.nombre}". Esta acción no se puede deshacer.`}
+      variant="danger"
+      confirmLabel="Eliminar"
+      onConfirm={handleDelete}
+    />
   );
 };
 
@@ -503,15 +513,6 @@ export const SettingsPage = () => {
         </Card>
       </div>
 
-      <ConfirmModal
-        open={!!deleteUser}
-        onOpenChange={open => !open && setDeleteUser(null)}
-        title="¿Eliminar usuario?"
-        description={`Se eliminará permanentemente la cuenta de "${deleteUser?.nombre}". Esta acción no se puede deshacer.`}
-        variant="danger"
-        confirmLabel="Eliminar"
-        onConfirm={handleDelete}
-      />
     </Layout>
   );
 };
