@@ -121,6 +121,7 @@ const UsersSection = ({ currentUser }) => {
   };
 
   return (
+    <>
     <Card className="bg-card border-border/50">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
@@ -320,6 +321,7 @@ const UsersSection = ({ currentUser }) => {
       confirmLabel="Eliminar"
       onConfirm={handleDelete}
     />
+    </>
   );
 };
 
