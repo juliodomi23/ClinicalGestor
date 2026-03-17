@@ -138,7 +138,6 @@ export const AdminDashboard = () => {
           {/* Calendar - Takes most space */}
           <div className="lg:col-span-8">
             <CalendarWidget
-              appointments={appointments}
               onAppointmentClick={handleAppointmentClick}
             />
           </div>

@@ -136,11 +136,14 @@ export const CalendarPage = () => {
   const gridScrollRef = useRef(null);
   useEffect(() => {
     if (!gridScrollRef.current) return;
-    const now = new Date();
-    const currentMin = now.getHours() * 60 + now.getMinutes();
-    const workStartMin = clinicConfig.work_start * 60;
-    const px = (currentMin - workStartMin) * (PX_PER_HOUR / 60);
-    gridScrollRef.current.scrollTop = Math.max(0, px - 80);
+    requestAnimationFrame(() => {
+      if (!gridScrollRef.current) return;
+      const now = new Date();
+      const currentMin = now.getHours() * 60 + now.getMinutes();
+      const workStartMin = clinicConfig.work_start * 60;
+      const px = (currentMin - workStartMin) * (PX_PER_HOUR / 60);
+      gridScrollRef.current.scrollTop = Math.max(0, px - 80);
+    });
   }, [clinicConfig.work_start, view]);
 
   // ── Sheet detalles ────────────────────────────────────────────────────────
@@ -502,7 +505,7 @@ export const CalendarPage = () => {
           {apt.paciente_nombre?.split(' ')[0]}
         </div>
         {height >= 34 && (
-          <div className="px-1 text-[9px] opacity-70 truncate" style={{ color: apt.doctor_color }}>
+          <div className="px-1 text-[11px] opacity-70 truncate" style={{ color: apt.doctor_color }}>
             {apt.hora_inicio}
           </div>
         )}
@@ -524,7 +527,7 @@ export const CalendarPage = () => {
             />
             {/* Línea de media hora — más sutil */}
             <div
-              className="absolute w-full border-t border-slate-200 dark:border-slate-600"
+              className="absolute w-full border-t border-slate-200 dark:border-white/10"
               style={{ top: top + PX_PER_HOUR / 2 }}
             />
           </div>
@@ -541,7 +544,7 @@ export const CalendarPage = () => {
           {/* Hora en punto */}
           <div
             className="absolute right-2 text-[11px] font-semibold text-slate-500 dark:text-slate-300 leading-none"
-            style={{ top: (h - clinicConfig.work_start) * PX_PER_HOUR - 6 }}
+            style={{ top: Math.max(2, (h - clinicConfig.work_start) * PX_PER_HOUR - 6) }}
           >
             {h}:00
           </div>
@@ -600,7 +603,7 @@ export const CalendarPage = () => {
     return (
       <div
         ref={gridScrollRef}
-        className="overflow-y-auto max-h-[560px] mt-2"
+        className="overflow-y-auto max-h-[calc(100vh-280px)] mt-2"
         style={{ scrollbarGutter: 'stable' }}
       >
         <div className="flex gap-0">
@@ -653,7 +656,7 @@ export const CalendarPage = () => {
         {/* Grid scrolleable */}
         <div
           ref={gridScrollRef}
-          className="overflow-y-auto max-h-[520px]"
+          className="overflow-y-auto max-h-[calc(100vh-280px)]"
           style={{ scrollbarGutter: 'stable' }}
         >
           <div className="flex gap-0">
@@ -667,7 +670,7 @@ export const CalendarPage = () => {
                 <div
                   key={day.toISOString()}
                   className={cn(
-                    'relative flex-1 border-l border-border/25',
+                    'relative flex-1 border-l border-slate-700/50',
                     isToday && 'bg-primary/[0.025]'
                   )}
                   style={{ height: GRID_HEIGHT }}
