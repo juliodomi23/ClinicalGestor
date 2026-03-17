@@ -87,88 +87,6 @@ export const PatientDetail = () => {
     fetchAll();
   }, [patientId]);
 
-  if (loading) {
-    return (
-      <Layout>
-        <div className="flex items-center justify-center min-h-[50vh]">
-          <p className="text-muted-foreground">Cargando expediente...</p>
-        </div>
-      </Layout>
-    );
-  }
-
-  if (!patient) {
-    return (
-      <Layout>
-        <div className="flex flex-col items-center justify-center min-h-[50vh] text-center">
-          <AlertTriangle className="h-12 w-12 text-muted-foreground mb-4" />
-          <h2 className="text-xl font-semibold mb-2">Paciente no encontrado</h2>
-          <p className="text-muted-foreground mb-4">El paciente solicitado no existe en el sistema.</p>
-          <Button onClick={() => navigate('/patients')}>Ver todos los pacientes</Button>
-        </div>
-      </Layout>
-    );
-  }
-
-  const handleAddNote = async (noteData) => {
-    try {
-      const res = await axios.post(`${API}/patients/${patientId}/notas`, {
-        paciente_id: patientId,
-        contenido: noteData.contenido,
-        tags: noteData.tags,
-      });
-      setNotes([res.data, ...notes]);
-      toast.success('Nota clínica agregada');
-    } catch (err) {
-      const d = err.response?.data?.detail;
-      toast.error(Array.isArray(d) ? d.map(e => e.msg).join(', ') : (d || 'Error al agregar nota'));
-    }
-  };
-
-  const handleOdontogramUpdate = async (update) => {
-    // Optimistic update
-    setTeethData(prev => {
-      const existing = prev.find(t => t.numero === update.diente_numero);
-      if (existing) {
-        return prev.map(t =>
-          t.numero === update.diente_numero
-            ? { ...t, zonas: { ...t.zonas, [update.zona]: update.estado } }
-            : t
-        );
-      } else {
-        return [...prev, {
-          numero: update.diente_numero,
-          zonas: { [update.zona]: update.estado }
-        }];
-      }
-    });
-    try {
-      await axios.put(`${API}/patients/${patientId}/odontogram`, update);
-      toast.success('Odontograma actualizado');
-    } catch (err) {
-      toast.error('Error al guardar odontograma');
-    }
-  };
-
-  const getInitials = (name) => {
-    return name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || 'P';
-  };
-
-  const formatDate = (dateStr) => {
-    return format(new Date(dateStr), "d 'de' MMMM, yyyy", { locale: es });
-  };
-
-  const calculateAge = (birthDate) => {
-    const today = new Date();
-    const birth = new Date(birthDate);
-    let age = today.getFullYear() - birth.getFullYear();
-    const monthDiff = today.getMonth() - birth.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
-      age--;
-    }
-    return age;
-  };
-
   // ── Google Drive Picker ─────────────────────────────────────────────────────
 
   const loadGapiScript = useCallback(() => {
@@ -257,6 +175,88 @@ export const PatientDetail = () => {
       setUploadingDrive(false);
     }
   }, [driveEnabled, loadGapiScript, loadGisScript, showPicker, patientId, GOOGLE_CLIENT_ID]);
+
+  if (loading) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center min-h-[50vh]">
+          <p className="text-muted-foreground">Cargando expediente...</p>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (!patient) {
+    return (
+      <Layout>
+        <div className="flex flex-col items-center justify-center min-h-[50vh] text-center">
+          <AlertTriangle className="h-12 w-12 text-muted-foreground mb-4" />
+          <h2 className="text-xl font-semibold mb-2">Paciente no encontrado</h2>
+          <p className="text-muted-foreground mb-4">El paciente solicitado no existe en el sistema.</p>
+          <Button onClick={() => navigate('/patients')}>Ver todos los pacientes</Button>
+        </div>
+      </Layout>
+    );
+  }
+
+  const handleAddNote = async (noteData) => {
+    try {
+      const res = await axios.post(`${API}/patients/${patientId}/notas`, {
+        paciente_id: patientId,
+        contenido: noteData.contenido,
+        tags: noteData.tags,
+      });
+      setNotes([res.data, ...notes]);
+      toast.success('Nota clínica agregada');
+    } catch (err) {
+      const d = err.response?.data?.detail;
+      toast.error(Array.isArray(d) ? d.map(e => e.msg).join(', ') : (d || 'Error al agregar nota'));
+    }
+  };
+
+  const handleOdontogramUpdate = async (update) => {
+    // Optimistic update
+    setTeethData(prev => {
+      const existing = prev.find(t => t.numero === update.diente_numero);
+      if (existing) {
+        return prev.map(t =>
+          t.numero === update.diente_numero
+            ? { ...t, zonas: { ...t.zonas, [update.zona]: update.estado } }
+            : t
+        );
+      } else {
+        return [...prev, {
+          numero: update.diente_numero,
+          zonas: { [update.zona]: update.estado }
+        }];
+      }
+    });
+    try {
+      await axios.put(`${API}/patients/${patientId}/odontogram`, update);
+      toast.success('Odontograma actualizado');
+    } catch (err) {
+      toast.error('Error al guardar odontograma');
+    }
+  };
+
+  const getInitials = (name) => {
+    return name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || 'P';
+  };
+
+  const formatDate = (dateStr) => {
+    return format(new Date(dateStr), "d 'de' MMMM, yyyy", { locale: es });
+  };
+
+  const calculateAge = (birthDate) => {
+    const today = new Date();
+    const birth = new Date(birthDate);
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    return age;
+  };
 
   const handleDeleteArchivo = async () => {
     if (!deleteArchivoId) return;

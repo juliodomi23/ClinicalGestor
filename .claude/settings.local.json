@@ -2,7 +2,14 @@
   "permissions": {
     "allow": [
       "Bash(cd:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(cmd /c \"where python\" 2>/dev/null || echo \"not found\")",
+      "Bash(cmd /c \"where yarn & where node & where python & where python3\" 2>&1)",
+      "Bash(net start:*)",
+      "Bash(sc query:*)",
+      "Read(//c/Program Files/MongoDB/**)",
+      "Read(//c/Program Files/**)",
+      "Bash(docker start:*)"
     ]
   }
 }

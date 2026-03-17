@@ -867,13 +867,13 @@ export const CalendarPage = () => {
                         data-testid="apt-date-btn"
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
-                        {newApt.fecha ? format(new Date(newApt.fecha), 'PPP', { locale: es }) : 'Seleccionar fecha'}
+                        {newApt.fecha ? format(new Date(newApt.fecha + 'T00:00:00'), 'PPP', { locale: es }) : 'Seleccionar fecha'}
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="start">
                       <Calendar
                         mode="single"
-                        selected={newApt.fecha ? new Date(newApt.fecha) : undefined}
+                        selected={newApt.fecha ? new Date(newApt.fecha + 'T00:00:00') : undefined}
                         onSelect={(date) => {
                           if (date) { setNewApt({ ...newApt, fecha: format(date, 'yyyy-MM-dd') }); setCalendarOpen(false); }
                         }}
@@ -1179,13 +1179,13 @@ export const CalendarPage = () => {
                     <PopoverTrigger asChild>
                       <Button variant="outline" className="w-full justify-start text-left font-normal">
                         <CalendarIcon className="mr-2 h-4 w-4" />
-                        {editData.fecha ? format(new Date(editData.fecha), 'PPP', { locale: es }) : 'Seleccionar'}
+                        {editData.fecha ? format(new Date(editData.fecha + 'T00:00:00'), 'PPP', { locale: es }) : 'Seleccionar'}
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="start">
                       <Calendar
                         mode="single"
-                        selected={editData.fecha ? new Date(editData.fecha) : undefined}
+                        selected={editData.fecha ? new Date(editData.fecha + 'T00:00:00') : undefined}
                         onSelect={(date) => {
                           if (date) { setEditData({ ...editData, fecha: format(date, 'yyyy-MM-dd') }); setCalendarEditOpen(false); }
                         }}
