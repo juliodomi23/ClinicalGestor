@@ -4,7 +4,7 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Build arg - EasyPanel lo inyecta en tiempo de build
-ARG REACT_APP_BACKEND_URL
+ARG REACT_APP_BACKEND_URL=https://julio-dentu-backend.zhwiib.easypanel.host
 ENV REACT_APP_BACKEND_URL=$REACT_APP_BACKEND_URL
 
 COPY package*.json ./
