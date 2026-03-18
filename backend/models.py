@@ -254,6 +254,16 @@ class ArchivoMedicoCreate(BaseModel):
     descripcion: Optional[str] = None
 
 
+# ── Especialidades ────────────────────────────────────────────────────────────
+
+class EspecialidadCreate(BaseModel):
+    nombre: str
+
+class Especialidad(BaseModel):
+    id: str
+    nombre: str
+
+
 # ── Dashboard ─────────────────────────────────────────────────────────────────
 
 class KPIResponse(BaseModel):

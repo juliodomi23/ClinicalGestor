@@ -9,8 +9,8 @@ from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
 from config import CORS_ORIGINS, CLINIC_NAME
-from database import client, create_indexes, seed_first_admin
-from routers import auth, admin, doctors, patients, appointments, odontogram, clinical, dashboard, webhooks
+from database import client, create_indexes, seed_first_admin, seed_specialties
+from routers import auth, admin, doctors, patients, appointments, odontogram, clinical, dashboard, webhooks, especialidades
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,6 +24,7 @@ async def lifespan(app: FastAPI):
     logger.info(f"Iniciando {CLINIC_NAME} API...")
     await create_indexes()
     await seed_first_admin()
+    await seed_specialties()
     logger.info("API lista en puerto 8001.")
     yield
     client.close()
@@ -57,3 +58,4 @@ app.include_router(odontogram.router,   prefix=PREFIX)
 app.include_router(clinical.router,     prefix=PREFIX)
 app.include_router(dashboard.router,    prefix=PREFIX)
 app.include_router(webhooks.router,     prefix=PREFIX)
+app.include_router(especialidades.router, prefix=PREFIX)

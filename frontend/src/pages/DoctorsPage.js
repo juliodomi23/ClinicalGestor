@@ -26,16 +26,6 @@ import {
 
 import { API } from '@/lib/api';
 
-const SPECIALTIES = [
-  'Odontología General',
-  'Endodoncia',
-  'Ortodoncia',
-  'Cirugía Maxilofacial',
-  'Periodoncia',
-  'Odontopediatría',
-  'Prostodoncia',
-  'Implantología',
-];
 
 const COLORS = [
   { value: '#0ea5e9', label: 'Azul' },
@@ -50,6 +40,7 @@ const COLORS = [
 export const DoctorsPage = () => {
   const navigate = useNavigate();
   const [doctors, setDoctors] = useState([]);
+  const [specialties, setSpecialties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -67,6 +58,7 @@ export const DoctorsPage = () => {
 
   useEffect(() => {
     fetchDoctors();
+    axios.get(`${API}/especialidades`).then(r => setSpecialties(r.data)).catch(() => {});
   }, []);
 
   const fetchDoctors = async () => {
@@ -221,8 +213,8 @@ export const DoctorsPage = () => {
                       <SelectValue placeholder="Seleccionar especialidad" />
                     </SelectTrigger>
                     <SelectContent>
-                      {SPECIALTIES.map(spec => (
-                        <SelectItem key={spec} value={spec}>{spec}</SelectItem>
+                      {specialties.map(spec => (
+                        <SelectItem key={spec.id} value={spec.nombre}>{spec.nombre}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

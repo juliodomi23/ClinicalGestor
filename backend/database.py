@@ -37,6 +37,7 @@ async def create_indexes() -> None:
         await db.notas_clinicas.create_index("paciente_id")
         await db.archivos_medicos.create_index("paciente_id")
         await db.odontograms.create_index("paciente_id", unique=True)
+        await db.especialidades.create_index("id", unique=True)
         logger.info("Índices MongoDB creados/verificados.")
     except Exception as e:
         logger.warning(f"Advertencia al crear índices: {e}")
@@ -66,3 +67,13 @@ async def seed_first_admin() -> None:
         "created_at": now,
     })
     logger.info(f"✅ Admin inicial creado: {FIRST_ADMIN_EMAIL}")
+
+
+async def seed_specialties() -> None:
+    """Inserta especialidades por defecto si la colección está vacía."""
+    from routers.especialidades import DEFAULT_SPECIALTIES
+    if await db.especialidades.count_documents({}) > 0:
+        return
+    docs = [{"id": str(uuid.uuid4()), "nombre": s} for s in DEFAULT_SPECIALTIES]
+    await db.especialidades.insert_many(docs)
+    logger.info(f"✅ {len(docs)} especialidades por defecto insertadas.")

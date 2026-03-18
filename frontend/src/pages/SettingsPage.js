@@ -13,7 +13,8 @@ import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
 import {
   Moon, Sun, User, Bell, Shield, Database,
-  Users, UserPlus, Trash2, Eye, EyeOff, RefreshCw
+  Users, UserPlus, Trash2, Eye, EyeOff, RefreshCw,
+  Stethoscope, Plus
 } from 'lucide-react';
 import { ConfirmModal } from '../components/ConfirmModal';
 
@@ -25,12 +26,6 @@ const ROL_LABELS = {
   recepcion: 'Recepción',
 };
 
-const SPECIALTIES = [
-  'Odontología General', 'Endodoncia', 'Ortodoncia',
-  'Cirugía Maxilofacial', 'Periodoncia', 'Odontopediatría',
-  'Prostodoncia', 'Implantología',
-];
-
 const DOCTOR_COLORS = [
   { value: '#0ea5e9', label: 'Azul' },
   { value: '#10b981', label: 'Verde' },
@@ -41,8 +36,93 @@ const DOCTOR_COLORS = [
   { value: '#06b6d4', label: 'Cyan' },
 ];
 
+// ── Sección de gestión de especialidades (solo admin) ─────────────────────
+const EspecialidadesSection = ({ specialties, onReload }) => {
+  const [newName, setNewName]       = useState('');
+  const [saving, setSaving]         = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
+
+  const handleAdd = async (e) => {
+    e.preventDefault();
+    if (!newName.trim()) return;
+    setSaving(true);
+    try {
+      await axios.post(`${API}/especialidades`, { nombre: newName.trim() });
+      setNewName('');
+      onReload();
+      toast.success('Especialidad agregada');
+    } catch (err) {
+      const d = err.response?.data?.detail;
+      toast.error(d || 'Error al agregar especialidad');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (id, nombre) => {
+    setDeletingId(id);
+    try {
+      await axios.delete(`${API}/especialidades/${id}`);
+      onReload();
+      toast.success(`"${nombre}" eliminada`);
+    } catch {
+      toast.error('Error al eliminar especialidad');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  return (
+    <Card className="bg-card border-border/50">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Stethoscope className="h-5 w-5" />
+          Especialidades
+        </CardTitle>
+        <CardDescription>
+          Gestiona las especialidades disponibles para los doctores
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <form onSubmit={handleAdd} className="flex gap-2">
+          <Input
+            placeholder="Nueva especialidad..."
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+            className="flex-1"
+          />
+          <Button type="submit" size="sm" disabled={saving || !newName.trim()}>
+            <Plus className="h-4 w-4 mr-1" />
+            Agregar
+          </Button>
+        </form>
+        <div className="divide-y divide-border/50">
+          {specialties.length === 0 && (
+            <p className="text-sm text-muted-foreground py-2">No hay especialidades registradas.</p>
+          )}
+          {specialties.map(s => (
+            <div key={s.id} className="flex items-center justify-between py-2.5">
+              <span className="text-sm font-medium">{s.nombre}</span>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7 text-destructive hover:text-destructive"
+                disabled={deletingId === s.id}
+                onClick={() => handleDelete(s.id, s.nombre)}
+                title="Eliminar"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
 // ── Sección de gestión de usuarios (solo admin) ────────────────────────────
-const UsersSection = ({ currentUser }) => {
+const UsersSection = ({ currentUser, specialties = [] }) => {
   const [users, setUsers]           = useState([]);
   const [deleteUser, setDeleteUser] = useState(null); // { id, nombre }
   const [loadingUsers, setLoading]  = useState(false);
@@ -231,8 +311,8 @@ const UsersSection = ({ currentUser }) => {
                         <SelectValue placeholder="Seleccionar..." />
                       </SelectTrigger>
                       <SelectContent>
-                        {SPECIALTIES.map(s => (
-                          <SelectItem key={s} value={s}>{s}</SelectItem>
+                        {specialties.map(s => (
+                          <SelectItem key={s.id} value={s.nombre}>{s.nombre}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -332,6 +412,15 @@ export const SettingsPage = () => {
 
   const isAdmin = user?.rol === 'admin';
 
+  const [specialties, setSpecialties] = useState([]);
+  const loadSpecialties = useCallback(async () => {
+    try {
+      const res = await axios.get(`${API}/especialidades`);
+      setSpecialties(res.data);
+    } catch { /* silencioso */ }
+  }, []);
+  useEffect(() => { if (isAdmin) loadSpecialties(); }, [isAdmin, loadSpecialties]);
+
   return (
     <Layout>
       <div className="space-y-6 max-w-3xl" data-testid="settings-page">
@@ -430,8 +519,11 @@ export const SettingsPage = () => {
           </CardContent>
         </Card>
 
+        {/* ── Especialidades (solo admin) ─────────────────────────────────── */}
+        {isAdmin && <EspecialidadesSection specialties={specialties} onReload={loadSpecialties} />}
+
         {/* ── Gestión de usuarios (solo admin) ───────────────────────────── */}
-        {isAdmin && <UsersSection currentUser={user} />}
+        {isAdmin && <UsersSection currentUser={user} specialties={specialties} />}
 
         {/* ── Notificaciones (próximamente) ──────────────────────────────── */}
         <Card className="bg-card border-border/50 opacity-60">
@@ -466,13 +558,12 @@ export const SettingsPage = () => {
           </CardContent>
         </Card>
 
-        {/* ── Integraciones (próximamente) ───────────────────────────────── */}
-        <Card className="bg-card border-border/50 opacity-60">
+        {/* ── Integraciones ───────────────────────────────────────────────── */}
+        <Card className="bg-card border-border/50">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Database className="h-5 w-5" />
               Integraciones
-              <span className="text-xs bg-muted px-2 py-0.5 rounded">Próximamente</span>
             </CardTitle>
             <CardDescription>Conecta servicios externos</CardDescription>
           </CardHeader>
@@ -491,10 +582,14 @@ export const SettingsPage = () => {
                 </div>
                 <div>
                   <p className="font-medium">Google Drive</p>
-                  <p className="text-sm text-muted-foreground">Para almacenar radiografías</p>
+                  <p className="text-sm text-muted-foreground">
+                    Configurado mediante variables de entorno para almacenar radiografías
+                  </p>
                 </div>
               </div>
-              <Button variant="outline" size="sm" disabled>Conectar</Button>
+              <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 px-2 py-1 rounded bg-emerald-100 dark:bg-emerald-900/30">
+                Configurado
+              </span>
             </div>
           </CardContent>
         </Card>
