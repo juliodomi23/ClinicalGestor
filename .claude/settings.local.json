@@ -11,7 +11,8 @@
       "Read(//c/Program Files/**)",
       "Bash(docker start:*)",
       "Bash(pip install:*)",
-      "Bash(\"D:\\\\AmbarRojo\\\\ClinicalGestor\\\\ClinicalGestor\\\\.gitignore\")"
+      "Bash(\"D:\\\\AmbarRojo\\\\ClinicalGestor\\\\ClinicalGestor\\\\.gitignore\")",
+      "Bash(python:*)"
     ]
   }
 }

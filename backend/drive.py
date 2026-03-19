@@ -16,13 +16,18 @@ def _get_drive_service():
     if not GOOGLE_SERVICE_ACCOUNT_JSON:
         return None
     try:
-        # Acepta JSON inline (string) o ruta a archivo .json
         raw = GOOGLE_SERVICE_ACCOUNT_JSON.strip()
         if raw.startswith('{'):
+            # JSON directo
             creds_info = json.loads(raw)
-        else:
+        elif raw.endswith('.json'):
+            # Ruta a archivo
             with open(raw) as f:
                 creds_info = json.load(f)
+        else:
+            # Base64 — formato recomendado para EasyPanel
+            import base64
+            creds_info = json.loads(base64.b64decode(raw).decode('utf-8'))
 
         creds = service_account.Credentials.from_service_account_info(
             creds_info,
