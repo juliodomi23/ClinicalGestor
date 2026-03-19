@@ -1,94 +1,142 @@
-# Guía de despliegue por cliente
+# Guía de Deploy — Dentu (ClinicalGestor)
 
-## Variables a configurar en EasyPanel
+Pasos completos para desplegar una nueva instancia de Dentu para un cliente.
 
-### Obligatorias — la app no arranca sin estas
+---
 
-| Variable | Descripción | Ejemplo |
-|---|---|---|
-| `MONGO_URL` | Connection string de MongoDB | `mongodb://user:pass@host:27017/db?authSource=admin` |
-| `DB_NAME` | Nombre de la base de datos | `clinica_lopez` |
-| `JWT_SECRET` | Clave secreta para tokens JWT (mín. 32 chars) | genera con comando abajo |
-| `WEBHOOK_API_KEY` | API key para integración con n8n | genera con comando abajo |
+## Requisitos previos
 
-```bash
-# Generar JWT_SECRET y WEBHOOK_API_KEY:
-python -c "import secrets; print(secrets.token_hex(32))"
+- Cuenta en [EasyPanel](https://easypanel.io) con un servidor configurado
+- Repositorio del proyecto en GitHub
+- Cuenta de Google para la clínica (Gmail o Google Workspace)
+- Acceso a [Google Cloud Console](https://console.cloud.google.com)
+
+---
+
+## 1. Google Cloud Console
+
+### 1.1 Crear proyecto (si no existe)
+1. Google Cloud Console → **Nuevo proyecto**
+2. Nombre: `dentu-[nombre-clinica]`
+
+### 1.2 Habilitar APIs necesarias
+En **APIs y servicios → Biblioteca**, habilitar:
+- Google Drive API
+- Google Picker API
+- Identity Services API (para Sign-In)
+
+### 1.3 Crear credencial OAuth 2.0 (para Sign-In y Picker)
+1. **APIs y servicios → Credenciales → Crear credencial → ID de cliente OAuth 2.0**
+2. Tipo: **Aplicación web**
+3. Orígenes autorizados: agrega la URL del frontend del cliente (ej: `https://clinica.easypanel.host`)
+4. Copiar el **Client ID** (termina en `.apps.googleusercontent.com`) — se usa en backend y frontend
+5. Copiar la **API Key** — se usa en el frontend
+
+### 1.4 Crear cuenta de servicio (para Drive centralizado)
+1. **IAM & Admin → Cuentas de servicio → Crear cuenta de servicio**
+2. Nombre: `dentu-[nombre-clinica]`
+3. Click en la cuenta creada → pestaña **Claves → Agregar clave → Crear clave nueva → JSON**
+4. Guardar el archivo `.json` descargado de forma segura
+
+### 1.5 Configurar carpeta de Google Drive
+1. En Google Drive de la cuenta de la clínica, crear carpeta: `Dentu-Archivos`
+2. Click derecho → **Compartir** → pegar el email de la cuenta de servicio (ej: `dentu-xxx@proyecto.iam.gserviceaccount.com`)
+3. Rol: **Editor**, desactivar notificación → **Compartir**
+4. Abrir la carpeta y copiar el **ID** de la URL: `https://drive.google.com/drive/folders/`**`ESTE-ES-EL-ID`**
+
+---
+
+## 2. Configurar el repositorio
+
+### 2.1 Dockerfile del frontend
+En `frontend/Dockerfile`, actualizar los ARG con los valores del cliente:
+
+```dockerfile
+ARG REACT_APP_BACKEND_URL=https://[cliente]-backend.easypanel.host
+ARG REACT_APP_GOOGLE_CLIENT_ID=[client-id].apps.googleusercontent.com
+ARG REACT_APP_GOOGLE_API_KEY=[api-key]
 ```
 
----
+### 2.2 Dockerfile del backend
+En `backend/Dockerfile`, actualizar los ARG:
 
-### Identidad de la clínica (white-label)
+```dockerfile
+ARG GOOGLE_CLIENT_ID=[client-id].apps.googleusercontent.com
+ARG GOOGLE_DRIVE_FOLDER_ID=[id-carpeta-drive]
+```
 
-| Variable | Descripción | Ejemplo |
-|---|---|---|
-| `CLINIC_NAME` | Nombre que aparece en el encabezado y documentos | `Clínica Dental López` |
-| `CLINIC_PRIMARY_COLOR` | Color primario en hex | `#0ea5e9` |
-| `CLINIC_LOGO_URL` | URL pública del logo (PNG/SVG, fondo transparente) | `https://tuclinica.com/logo.png` |
-| `CLINIC_TIMEZONE` | Zona horaria del servidor | `America/Mexico_City` |
-| `CLINIC_PHONE` | Teléfono de la clínica (opcional) | `+52 555 123 4567` |
-| `CLINIC_ADDRESS` | Dirección (opcional) | `Av. Principal 123, CDMX` |
+> **Nota:** El `GOOGLE_SERVICE_ACCOUNT_JSON` NO va en el Dockerfile — va en EasyPanel como env var (ver sección 3).
 
 ---
 
-### Horario laboral
+## 3. EasyPanel — Variables de entorno del backend
 
-| Variable | Descripción | Default |
-|---|---|---|
-| `WORK_START` | Hora de inicio (formato 24h, entero) | `8` |
-| `WORK_END` | Hora de cierre exclusivo | `19` |
-| `SLOT_DURATION` | Duración de cada cita en minutos | `30` |
-| `APPOINTMENT_PRICE` | Precio base por cita (para dashboard) | `150` |
+En EasyPanel → servicio backend → **Environment**, agregar:
 
----
+| Variable | Valor |
+|----------|-------|
+| `MONGO_URL` | `mongodb://usuario:password@host:27017/?tls=false` |
+| `DB_NAME` | `dentu_[clinica]` |
+| `JWT_SECRET` | Genera con: `python -c "import secrets; print(secrets.token_hex(32))"` |
+| `WEBHOOK_API_KEY` | Genera con el mismo comando |
+| `FIRST_ADMIN_EMAIL` | Email del admin inicial |
+| `FIRST_ADMIN_PASSWORD` | Mínimo 8 chars, 1 mayúscula, 1 número |
+| `FIRST_ADMIN_NAME` | Nombre del admin |
+| `CLINIC_NAME` | Nombre de la clínica |
+| `CLINIC_TIMEZONE` | Ej: `America/Mexico_City` |
+| `WORK_START` | Hora inicio (ej: `8`) |
+| `WORK_END` | Hora fin (ej: `19`) |
+| `SLOT_DURATION` | Duración slot en minutos (ej: `30`) |
+| `APPOINTMENT_PRICE` | Precio base por cita |
+| `CORS_ORIGINS` | URL del frontend (ej: `https://[cliente]-frontend.easypanel.host`) |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | Contenido completo del archivo `.json` de la cuenta de servicio |
 
-### Admin inicial (solo primer arranque)
-
-> Se crea automáticamente si la base de datos está vacía.
-> Después del primer login puedes eliminar estas variables.
-
-| Variable | Descripción |
-|---|---|
-| `FIRST_ADMIN_EMAIL` | Correo del administrador inicial |
-| `FIRST_ADMIN_PASSWORD` | Contraseña (mín. 8 chars, 1 mayúscula, 1 número) |
-| `FIRST_ADMIN_NAME` | Nombre completo |
-
----
-
-### URLs y CORS
-
-| Variable | Descripción | Ejemplo |
-|---|---|---|
-| `CORS_ORIGINS` | URL del frontend (sin barra al final) | `https://cliente.easypanel.host` |
-| `NOTIFICATION_WEBHOOK_URL` | URL del workflow n8n para WhatsApp/email (opcional) | `https://n8n.tuservidor.com/webhook/abc` |
+### Cómo pegar el GOOGLE_SERVICE_ACCOUNT_JSON
+1. Abrir el archivo `.json` descargado con el Bloc de notas
+2. Seleccionar todo → copiar
+3. Pegarlo como valor de la variable en EasyPanel (acepta JSON multilínea)
 
 ---
 
-## Checklist de despliegue nuevo cliente
+## 4. Deploy
 
-- [ ] Crear servicio MongoDB en EasyPanel — anotar connection string
-- [ ] Crear servicio Backend — configurar todas las variables de arriba
-- [ ] Crear servicio Frontend — configurar `REACT_APP_BACKEND_URL` en el Dockerfile
-- [ ] Verificar que el backend responde en `/api/config`
-- [ ] Entrar al frontend y hacer login con `FIRST_ADMIN_EMAIL`
-- [ ] Cambiar `CORS_ORIGINS` al dominio real del frontend
-- [ ] Cambiar `CORS_ORIGINS=*` por el dominio real si se usó `*` temporalmente
-- [ ] Crear usuarios del personal desde Configuración → Usuarios
-- [ ] Eliminar `FIRST_ADMIN_PASSWORD` de las env vars (opcional pero recomendado)
+1. Hacer push de los cambios del Dockerfile al repo
+2. EasyPanel → servicio frontend → **Force Rebuild**
+3. EasyPanel → servicio backend → **Redeploy**
+4. Verificar que ambos servicios estén en verde
 
 ---
 
-## Cambiar de cliente (mismo servidor)
+## 5. Primer acceso
 
-Si reutilizas el servidor para otro cliente:
-
-1. Crea un nuevo proyecto en EasyPanel
-2. Usa un `DB_NAME` diferente por cliente — cada uno tiene su propia BD aislada
-3. Actualiza `CLINIC_NAME`, `CLINIC_PRIMARY_COLOR`, `CLINIC_LOGO_URL`
-4. Genera nuevos `JWT_SECRET` y `WEBHOOK_API_KEY` — nunca reutilices entre clientes
+1. Entrar a la URL del frontend
+2. Login con `FIRST_ADMIN_EMAIL` y `FIRST_ADMIN_PASSWORD`
+3. Ir a **Configuración → Usuarios** y crear las cuentas del personal
+   - El email debe coincidir exactamente con su cuenta de Google si van a usar Sign-In con Google
+4. El personal puede entrar con email/contraseña **o** con el botón "Continuar con Google"
 
 ---
 
-## Cambiar el logo o colores después del deploy
+## 6. Checklist final
 
-Solo edita las variables de entorno en EasyPanel y haz **Restart** del servicio backend (no hace falta rebuild). El frontend lee estos valores desde `/api/config` al cargar.
+- [ ] APIs de Google habilitadas
+- [ ] Client ID y API Key creados y configurados
+- [ ] Cuenta de servicio creada y JSON guardado de forma segura
+- [ ] Carpeta de Drive creada y compartida con la cuenta de servicio
+- [ ] Dockerfiles actualizados con vars del cliente
+- [ ] Env vars del backend en EasyPanel
+- [ ] Force Rebuild del frontend completado
+- [ ] Login con email/contraseña funciona
+- [ ] Login con Google funciona
+- [ ] Subir archivo desde paciente va al Drive correcto
+- [ ] Primer admin creado y acceso verificado
+
+---
+
+## Notas de seguridad
+
+- **Nunca** subir el archivo `.json` del service account al repositorio
+- Verificar que `backend/service-account.json` esté en `.gitignore`
+- Generar `JWT_SECRET` y `WEBHOOK_API_KEY` únicos por cliente
+- Para producción, rotar las claves del service account periódicamente
+- El `GOOGLE_SERVICE_ACCOUNT_JSON` en EasyPanel contiene claves privadas — tratar con cuidado

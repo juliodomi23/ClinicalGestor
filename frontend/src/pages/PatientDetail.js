@@ -35,12 +35,14 @@ import {
   Settings2,
 } from 'lucide-react';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { useAuth } from '../context/AuthContext';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 export const PatientDetail = () => {
   const { patientId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [patient, setPatient] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -166,6 +168,7 @@ export const PatientDetail = () => {
         tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
           client_id: GOOGLE_CLIENT_ID,
           scope: 'https://www.googleapis.com/auth/drive.readonly',
+          hint: user?.email,
           callback: (resp) => {
             if (resp.error) { setUploadingDrive(false); return; }
             showPicker(resp.access_token);
