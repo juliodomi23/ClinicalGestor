@@ -10,7 +10,7 @@ from auth import (
     get_current_user, require_admin,
 )
 from database import db
-from models import UserCreate, UserLogin, UserResponse, TokenResponse, UserRole
+from models import UserCreate, UserLogin, UserResponse, TokenResponse, UserRole, GoogleLoginRequest
 from rate_limit import login_limiter
 
 logger = logging.getLogger(__name__)
@@ -81,6 +81,46 @@ async def login(credentials: UserLogin):
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
 
     token = create_token(user["id"], user["email"], user["rol"])
+    return TokenResponse(
+        access_token=token,
+        user=UserResponse(
+            id=user["id"], email=user["email"],
+            nombre=user["nombre"], rol=user["rol"], created_at=user["created_at"],
+        ),
+    )
+
+
+@router.post("/google", response_model=TokenResponse)
+async def google_login(body: GoogleLoginRequest):
+    """
+    Autentica con un ID token de Google.
+    El usuario debe existir previamente en el sistema (creado por un admin).
+    """
+    from google.oauth2 import id_token
+    from google.auth.transport import requests as google_requests
+    from config import GOOGLE_CLIENT_ID
+
+    if not GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=503, detail="Google Sign-In no está configurado en este servidor.")
+    try:
+        id_info = id_token.verify_oauth2_token(
+            body.credential,
+            google_requests.Request(),
+            GOOGLE_CLIENT_ID,
+        )
+    except Exception:
+        raise HTTPException(status_code=401, detail="Token de Google inválido o expirado.")
+
+    email = id_info.get('email')
+    user = await db.users.find_one({"email": email})
+    if not user:
+        raise HTTPException(
+            status_code=403,
+            detail="No tienes acceso al sistema. Contacta al administrador de la clínica.",
+        )
+
+    token = create_token(user["id"], user["email"], user["rol"])
+    logger.info(f"Login con Google exitoso: {email}")
     return TokenResponse(
         access_token=token,
         user=UserResponse(

@@ -80,6 +80,10 @@ class UserLogin(BaseModel):
     password: str
 
 
+class GoogleLoginRequest(BaseModel):
+    credential: str  # ID token devuelto por Google Identity Services
+
+
 class UserResponse(UserBase):
     id: str
     created_at: str

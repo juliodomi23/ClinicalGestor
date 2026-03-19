@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -11,24 +11,70 @@ import axios from 'axios';
 
 import { API } from '@/lib/api';
 
+const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID;
+
 export const LoginPage = () => {
   const [isLoading, setIsLoading]       = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [clinicName, setClinicName]     = useState('');
 
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
 
-  const { login }       = useAuth();
-  const { theme, toggleTheme } = useTheme();
-  const navigate        = useNavigate();
+  const { login, loginWithGoogle } = useAuth();
+  const { theme, toggleTheme }     = useTheme();
+  const navigate                   = useNavigate();
+  const googleBtnRef               = useRef(null);
+  const gisLoaded                  = useRef(false);
 
-  // Carga el nombre de la clínica desde /api/config (endpoint público)
   useEffect(() => {
     axios.get(`${API}/config`)
       .then(res => setClinicName(res.data.clinic_name || ''))
-      .catch(() => { /* Si falla simplemente no muestra nombre */ });
+      .catch(() => {});
   }, []);
+
+  // Carga Google Identity Services y renderiza el botón oficial de Google
+  useEffect(() => {
+    if (!GOOGLE_CLIENT_ID || gisLoaded.current) return;
+
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.onload = () => {
+      gisLoaded.current = true;
+      window.google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleGoogleCredential,
+        ux_mode: 'popup',
+      });
+      if (googleBtnRef.current) {
+        window.google.accounts.id.renderButton(googleBtnRef.current, {
+          type: 'standard',
+          theme: 'outline',
+          size: 'large',
+          text: 'continue_with',
+          locale: 'es',
+          width: 320,
+        });
+      }
+    };
+    document.body.appendChild(script);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleGoogleCredential = async (response) => {
+    setGoogleLoading(true);
+    try {
+      const user = await loginWithGoogle(response.credential);
+      toast.success(`Bienvenido, ${user.nombre}`);
+      navigate('/');
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'No se pudo iniciar sesión con Google');
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -59,7 +105,7 @@ export const LoginPage = () => {
       </div>
 
       <div className="w-full max-w-sm space-y-8">
-        {/* Encabezado con logo y nombre de clínica */}
+        {/* Encabezado */}
         <div className="flex flex-col items-center gap-3 text-center">
           <div className="w-14 h-14 rounded-2xl bg-primary flex items-center justify-center shadow-md">
             <Stethoscope className="h-7 w-7 text-primary-foreground" />
@@ -74,7 +120,26 @@ export const LoginPage = () => {
           </div>
         </div>
 
-        {/* Formulario de login */}
+        {/* Google Sign-In */}
+        {GOOGLE_CLIENT_ID && (
+          <div className="space-y-3">
+            <div
+              ref={googleBtnRef}
+              className="flex justify-center"
+              data-testid="google-signin-btn"
+            />
+            {googleLoading && (
+              <p className="text-center text-sm text-muted-foreground">Verificando con Google...</p>
+            )}
+            <div className="flex items-center gap-3">
+              <div className="flex-1 border-t border-border" />
+              <span className="text-xs text-muted-foreground">o continúa con correo</span>
+              <div className="flex-1 border-t border-border" />
+            </div>
+          </div>
+        )}
+
+        {/* Formulario email/password */}
         <form onSubmit={handleLogin} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="email">Correo electrónico</Label>

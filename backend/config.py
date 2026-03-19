@@ -52,6 +52,15 @@ FIRST_ADMIN_EMAIL    = os.environ.get('FIRST_ADMIN_EMAIL')
 FIRST_ADMIN_PASSWORD = os.environ.get('FIRST_ADMIN_PASSWORD')
 FIRST_ADMIN_NAME     = os.environ.get('FIRST_ADMIN_NAME', 'Administrador')
 
+# ── Google (Sign-In + Drive centralizado) ────────────────────────────────────
+# Client ID de OAuth 2.0 (para verificar tokens de Google Sign-In)
+GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
+# Credenciales de la cuenta de servicio: JSON inline o ruta a archivo .json
+GOOGLE_SERVICE_ACCOUNT_JSON = os.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON', '')
+# ID de la carpeta de Google Drive donde se subirán los archivos
+# (la carpeta debe estar compartida con el email de la cuenta de servicio)
+GOOGLE_DRIVE_FOLDER_ID = os.environ.get('GOOGLE_DRIVE_FOLDER_ID', '')
+
 # ── Notificaciones (n8n trigger) ─────────────────────────────────────────────
 # URL del workflow de n8n que envía WhatsApp/email al paciente.
 # Si está vacía, las notificaciones quedan desactivadas.

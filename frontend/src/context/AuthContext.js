@@ -129,7 +129,16 @@ export const AuthProvider = ({ children }) => {
     return userData;
   };
 
-  const value = { user, token, loading, login, logout, isAuthenticated: !!user };
+  const loginWithGoogle = async (credential) => {
+    const response = await axios.post(`${API}/auth/google`, { credential });
+    const { access_token, user: userData } = response.data;
+    applyToken(access_token);
+    scheduleRefresh(access_token);
+    setUser(userData);
+    return userData;
+  };
+
+  const value = { user, token, loading, login, loginWithGoogle, logout, isAuthenticated: !!user };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

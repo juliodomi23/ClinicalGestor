@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timezone
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from auth import get_current_user
 from database import db
@@ -82,6 +82,45 @@ async def create_patient_file(
         "fecha":       datetime.now(timezone.utc).isoformat(),
     }
     await db.archivos_medicos.insert_one(archivo_doc)
+    return ArchivoMedico(**archivo_doc)
+
+
+@router.post("/patients/{patient_id}/archivos/upload", response_model=ArchivoMedico)
+async def upload_archivo_to_drive(
+    patient_id: str,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Recibe un archivo del dispositivo, lo sube a Google Drive y lo vincula al paciente."""
+    from drive import upload_to_drive
+    from config import GOOGLE_DRIVE_FOLDER_ID
+
+    content = await file.read()
+    mimetype = file.content_type or 'application/octet-stream'
+    try:
+        drive_file = await upload_to_drive(
+            content, file.filename or 'archivo', mimetype,
+            GOOGLE_DRIVE_FOLDER_ID or None,
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+    tipo = (
+        'imagen' if mimetype.startswith('image/') else
+        'pdf'    if mimetype == 'application/pdf' else
+        'documento'
+    )
+    archivo_doc = {
+        "id":          str(uuid.uuid4()),
+        "paciente_id": patient_id,
+        "nombre":      drive_file['name'],
+        "tipo":        tipo,
+        "url":         drive_file['url'],
+        "descripcion": None,
+        "fecha":       datetime.now(timezone.utc).isoformat(),
+    }
+    await db.archivos_medicos.insert_one(archivo_doc)
+    logger.info(f"Archivo '{drive_file['name']}' subido a Drive para paciente {patient_id}")
     return ArchivoMedico(**archivo_doc)
 
 

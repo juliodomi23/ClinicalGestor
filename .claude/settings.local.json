@@ -9,7 +9,9 @@
       "Bash(sc query:*)",
       "Read(//c/Program Files/MongoDB/**)",
       "Read(//c/Program Files/**)",
-      "Bash(docker start:*)"
+      "Bash(docker start:*)",
+      "Bash(pip install:*)",
+      "Bash(\"D:\\\\AmbarRojo\\\\ClinicalGestor\\\\ClinicalGestor\\\\.gitignore\")"
     ]
   }
 }

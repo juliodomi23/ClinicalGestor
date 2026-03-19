@@ -31,6 +31,7 @@ import {
   Image,
   File,
   HardDriveUpload,
+  Upload,
   Settings2,
 } from 'lucide-react';
 import { ConfirmModal } from '../components/ConfirmModal';
@@ -49,11 +50,13 @@ export const PatientDetail = () => {
   const [selectedImage, setSelectedImage] = useState(null);
   const [archivos, setArchivos] = useState([]);
   const [uploadingDrive, setUploadingDrive] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [deleteArchivoId, setDeleteArchivoId] = useState(null);
   const gapiLoaded = useRef(false);
   const gisLoaded = useRef(false);
   const tokenClientRef = useRef(null);
   const pickerCallbackRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID;
   const GOOGLE_API_KEY = process.env.REACT_APP_GOOGLE_API_KEY;
@@ -175,6 +178,28 @@ export const PatientDetail = () => {
       setUploadingDrive(false);
     }
   }, [driveEnabled, loadGapiScript, loadGisScript, showPicker, patientId, GOOGLE_CLIENT_ID]);
+
+  const handleUploadToDrive = useCallback(async (e) => {
+    const file = e.target.files[0];
+    if (!file || !driveEnabled) return;
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await axios.post(
+        `${API}/patients/${patientId}/archivos/upload`,
+        form,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      );
+      setArchivos(prev => [res.data, ...prev]);
+      toast.success(`"${file.name}" subido correctamente`);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al subir el archivo');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }, [driveEnabled, patientId]);
 
   if (loading) {
     return (
@@ -488,10 +513,23 @@ export const PatientDetail = () => {
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-lg font-semibold">Radiografías y Archivos</CardTitle>
                   {driveEnabled ? (
-                    <Button size="sm" onClick={handleDrivePicker} disabled={uploadingDrive}>
-                      <HardDriveUpload className="h-4 w-4 mr-1" />
-                      {uploadingDrive ? 'Cargando...' : 'Vincular desde Drive'}
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploadingDrive || uploading}>
+                        <Upload className="h-4 w-4 mr-1" />
+                        {uploading ? 'Subiendo...' : 'Subir archivo'}
+                      </Button>
+                      <Button size="sm" onClick={handleDrivePicker} disabled={uploadingDrive || uploading}>
+                        <HardDriveUpload className="h-4 w-4 mr-1" />
+                        {uploadingDrive ? 'Cargando...' : 'Vincular desde Drive'}
+                      </Button>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
+                        className="hidden"
+                        onChange={handleUploadToDrive}
+                      />
+                    </div>
                   ) : (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Settings2 className="h-4 w-4" />
@@ -501,7 +539,7 @@ export const PatientDetail = () => {
                 </div>
                 {driveEnabled && (
                   <p className="text-sm text-muted-foreground">
-                    Los archivos se vinculan desde tu Google Drive — no se almacenan en el servidor.
+                    Sube archivos directamente desde tu dispositivo o vincula archivos existentes de Google Drive.
                   </p>
                 )}
               </CardHeader>
@@ -587,7 +625,7 @@ export const PatientDetail = () => {
                     <FileImage className="h-12 w-12 mx-auto mb-4 opacity-50" />
                     <p>No hay archivos vinculados</p>
                     {driveEnabled ? (
-                      <p className="text-sm mt-1">Usa "Vincular desde Drive" para agregar radiografías y documentos</p>
+                      <p className="text-sm mt-1">Usa "Subir archivo" para subir desde tu dispositivo o "Vincular desde Drive" para archivos existentes</p>
                     ) : (
                       <p className="text-sm mt-1">Configura las variables de Google Drive en <code className="text-xs">.env</code> para activar esta función</p>
                     )}
